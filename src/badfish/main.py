@@ -529,7 +529,15 @@ class Badfish:
 
         raw = await response.text("utf-8", "ignore")
         data = json.loads(raw.strip())
-        self.vendor = "Dell" if data.get("Oem") and "Dell" in data["Oem"] else "Supermicro"
+        oem = data.get("Oem") or {}
+        if "Dell" in oem:
+            self.vendor = "Dell"
+        elif "Supermicro" in oem:
+            self.vendor = "Supermicro"
+        elif "Hpe" in oem:
+            self.vendor = "HPE"
+        else:
+            self.vendor = "Unknown"
 
         if "Managers" not in data:
             raise BadfishException("Managers resource not found")
@@ -1117,7 +1125,7 @@ class Badfish:
 
     async def reset_idrac(self, wait=False):
         if self.vendor != "Dell":
-            self.logger.warning("Vendor isn't a Dell, if you are trying this on a Supermicro, use --bmc-reset instead.")
+            self.logger.warning("Vendor isn't a Dell, if you are trying this on a Supermicro or HPE, use --bmc-reset instead.")
             return False
         self.logger.debug("Running reset iDRAC.")
         _reset_types = await self.get_reset_types(manager=True)
@@ -1154,8 +1162,8 @@ class Badfish:
             return True
 
     async def reset_bmc(self):
-        if self.vendor != "Supermicro":
-            self.logger.warning("Vendor isn't a Supermicro, if you are trying this on a Dell, use --racreset instead.")
+        if self.vendor not in ("Supermicro", "HPE"):
+            self.logger.warning("Vendor isn't a Supermicro or HPE, if you are trying this on a Dell, use --racreset instead.")
             return False
         self.logger.debug("Running reset BMC.")
         _reset_types = await self.get_reset_types(manager=True, bmc=True)
@@ -1630,7 +1638,7 @@ class Badfish:
 
         _uri = "%s%s" % (self.host_uri, self.system_resource)
         _headers = {"Content-Type": "application/json"}
-        if self.vendor == "Supermicro":
+        if self.vendor in ("Supermicro", "HPE"):
             _payload = {"Boot": {"BootSourceOverrideEnabled": "Once"}}
 
             _response = await self.get_request(_uri)

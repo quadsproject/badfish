@@ -53,7 +53,7 @@ class TestResetIdrac(TestBase):
         self.boot_seq = BOOT_SEQ_RESPONSE_DIRECTOR
         self.args = [self.option_arg]
         _, err = self.badfish_call()
-        assert err == RESPONSE_RESET_WRONG_VENDOR % ("Dell", "Supermicro", "--bmc-reset")
+        assert err == RESPONSE_RESET_WRONG_VENDOR % ("Dell", "Supermicro or HPE", "--bmc-reset")
 
     @patch("badfish.main.Badfish.wait_for_idrac_ready", new_callable=AsyncMock)
     @patch("aiohttp.ClientSession.delete")

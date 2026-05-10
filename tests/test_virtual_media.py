@@ -9,6 +9,7 @@ from tests.config import (
     BOOT_SOURCE_OVERRIDE_TARGET_CD,
     BOOT_SOURCE_OVERRIDE_TARGET_USBCD,
     INIT_RESP,
+    INIT_RESP_HPE,
     INIT_RESP_SUPERMICRO,
     JOB_OK_RESP,
     RESPONSE_BOOT_TO,
@@ -430,6 +431,26 @@ class TestBootToVirtualMedia(TestBase):
         self.args = [self.option_arg]
         _, err = self.badfish_call()
         assert err == VMEDIA_BOOT_TO_SM_FAIL
+
+    @patch("aiohttp.ClientSession.patch")
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_good_hpe(self, mock_get, mock_post, mock_delete, mock_patch):
+        responses_get = [
+            VMEDIA_GET_VM_CONFIG_RESP_DELL,
+            VMEDIA_MEMBER_RM_DISK_RESP,
+            VMEDIA_MEMBER_CD_RESP,
+            BOOT_SOURCE_OVERRIDE_TARGET_USBCD,
+        ]
+        responses = INIT_RESP_HPE + responses_get
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, 200, "OK")
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.set_mock_response(mock_patch, 200, "OK")
+        self.args = [self.option_arg]
+        _, err = self.badfish_call()
+        assert err == VMEDIA_BOOT_TO_SM_PASS
 
 
 class TestCheckRemoteImage(TestBase):

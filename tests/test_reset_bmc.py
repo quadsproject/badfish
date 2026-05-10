@@ -3,6 +3,7 @@ from unittest.mock import patch
 from tests.config import (
     BOOT_SEQ_RESPONSE_DIRECTOR,
     INIT_RESP,
+    INIT_RESP_HPE,
     INIT_RESP_SUPERMICRO,
     RESET_TYPE_RESP,
     RESET_TYPE_RESP_NO_ALLOWABLE_VALUES,
@@ -66,4 +67,17 @@ class TestResetBMC(TestBase):
         self.boot_seq = BOOT_SEQ_RESPONSE_DIRECTOR
         self.args = [self.option_arg]
         _, err = self.badfish_call()
-        assert err == RESPONSE_RESET_WRONG_VENDOR % ("Supermicro", "Dell", "--racreset")
+        assert err == RESPONSE_RESET_WRONG_VENDOR % ("Supermicro or HPE", "Dell", "--racreset")
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_reset_bmc_hpe(self, mock_get, mock_post, mock_delete):
+        responses = INIT_RESP_HPE + [RESET_TYPE_RESP]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, [200, 200], "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.boot_seq = BOOT_SEQ_RESPONSE_DIRECTOR
+        self.args = [self.option_arg]
+        _, err = self.badfish_call()
+        assert err == RESPONSE_RESET % ("200", "BMC", "BMC")

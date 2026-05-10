@@ -271,6 +271,18 @@ INIT_RESP_SUPERMICRO = [
     ROOT_RESP_SUPERMICRO,
     MAN_RESP,
 ]
+ROOT_RESP_HPE = (
+    '{"Managers":{"@odata.id":"/redfish/v1/Managers"},"Systems":{"@odata.id":"/redfish/v1/Systems"}, '
+    '"RedfishVersion": "1.0.2","Oem":{"Hpe":{"Manager":[{}]}}}'
+)
+MAN_RESP_HPE = '{"Members":[{"@odata.id":"/redfish/v1/Managers/1"}]}'
+INIT_RESP_HPE = [
+    ROOT_RESP_HPE,
+    ROOT_RESP_HPE,
+    SYS_RESP,
+    ROOT_RESP_HPE,
+    MAN_RESP_HPE,
+]
 
 RESPONSE_INIT_CREDENTIALS_UNAUTHORIZED = (
     f"- ERROR    - Failed to authenticate. Verify your credentials for {MOCK_HOST}\n"
