@@ -1,1 +1,2 @@
 RETRIES = 30
+TIMEOUT = 60
