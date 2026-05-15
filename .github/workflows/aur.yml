@@ -1,0 +1,54 @@
+name: AUR
+
+on:
+  workflow_dispatch:
+
+  pull_request:
+    types: [opened, edited]
+    branches: [development, master]
+    paths:
+      - 'aur/**'
+      - '.github/workflows/aur.yml'
+
+  push:
+    branches: [master]
+    paths:
+      - 'aur/**'
+      - '.github/workflows/aur.yml'
+
+jobs:
+  build:
+    name: Build and Lint AUR Package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pacman -Sy --noconfirm base-devel namcap python python-build \
+            python-installer python-wheel python-setuptools \
+            python-yaml python-aiohttp python-async-lru python-rich
+
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder /github/workspace || chown -R builder $GITHUB_WORKSPACE
+
+      - name: Lint with namcap
+        run: namcap aur/PKGBUILD
+
+      - name: Build package
+        run: |
+          cp -r aur /home/builder/aur
+          chown -R builder /home/builder/aur
+          su builder -c 'cd /home/builder/aur && makepkg --noconfirm'
+
+      - name: Verify package installs
+        run: |
+          pkg=$(ls /home/builder/aur/*.pkg.tar.zst)
+          pacman -U --noconfirm "$pkg"
+          badfish --help

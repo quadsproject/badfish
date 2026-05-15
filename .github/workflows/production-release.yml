@@ -140,3 +140,58 @@ jobs:
                   podman tag quay.io/quads/badfish:master quay.io/quads/badfish:latest
                   podman push quay.io/quads/badfish:master
                   podman push quay.io/quads/badfish:latest
+
+    # ------------------------------------------------------------------
+    # JOB 4: AUR PUBLISH
+    # ------------------------------------------------------------------
+    aur_publish:
+        name: Publish to AUR
+        needs: release
+        if: needs.release.outputs.released == 'true'
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout Tagged Release
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ needs.release.outputs.tag }}
+
+            - name: Update PKGBUILD and .SRCINFO
+              env:
+                  VERSION: ${{ needs.release.outputs.version }}
+                  TAG: ${{ needs.release.outputs.tag }}
+              run: |
+                  SHA256=$(curl -sL "https://github.com/quadsproject/badfish/archive/refs/tags/${TAG}.tar.gz" | sha256sum | cut -d' ' -f1)
+
+                  sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/PKGBUILD
+                  sed -i "s/^pkgrel=.*/pkgrel=1/" aur/PKGBUILD
+                  sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" aur/PKGBUILD
+
+                  sed -i "s/^\tpkgver = .*/\tpkgver = ${VERSION}/" aur/.SRCINFO
+                  sed -i "s/^\tpkgrel = .*/\tpkgrel = 1/" aur/.SRCINFO
+                  sed -i "s|badfish-.*\.tar\.gz::|badfish-${VERSION}.tar.gz::|" aur/.SRCINFO
+                  sed -i "s|/tags/v[^/]*/|/tags/${TAG}/|" aur/.SRCINFO
+                  sed -i "s/^\tsha256sums = .*/\tsha256sums = ${SHA256}/" aur/.SRCINFO
+
+            - name: Set up SSH for AUR
+              env:
+                  AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+              run: |
+                  mkdir -p ~/.ssh
+                  echo "$AUR_SSH_KEY" > ~/.ssh/aur
+                  chmod 600 ~/.ssh/aur
+                  printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur\n  User aur\n' >> ~/.ssh/config
+                  ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
+
+            - name: Push to AUR
+              env:
+                  VERSION: ${{ needs.release.outputs.version }}
+              run: |
+                  git config --global user.name "GitHub CI"
+                  git config --global user.email "ci@github.com"
+                  git clone ssh://aur@aur.archlinux.org/badfish.git /tmp/aur-badfish
+                  cp aur/PKGBUILD aur/.SRCINFO /tmp/aur-badfish/
+                  cd /tmp/aur-badfish
+                  git add PKGBUILD .SRCINFO
+                  git commit -m "Update to ${VERSION}"
+                  git push
