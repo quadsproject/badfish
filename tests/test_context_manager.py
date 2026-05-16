@@ -467,6 +467,7 @@ class TestExecuteBadfishSessionCleanup:
             "get_nic_attribute": None,
             "set_nic_attribute": None,
             "insecure": False,
+            "timeout": 60,
         }
 
         with patch("badfish.main.badfish_factory") as mock_factory:
@@ -552,6 +553,7 @@ class TestExecuteBadfishSessionCleanup:
             "get_nic_attribute": None,
             "set_nic_attribute": None,
             "insecure": False,
+            "timeout": 60,
         }
 
         with patch("badfish.main.badfish_factory") as mock_factory:
@@ -641,6 +643,7 @@ class TestExecuteBadfishSessionCleanup:
             "get_nic_attribute": None,
             "set_nic_attribute": None,
             "insecure": False,
+            "timeout": 60,
         }
 
         with patch("badfish.main.badfish_factory") as mock_factory:
@@ -726,6 +729,7 @@ class TestExecuteBadfishSessionCleanup:
             "get_nic_attribute": None,
             "set_nic_attribute": None,
             "insecure": False,
+            "timeout": 60,
         }
 
         with patch("badfish.main.badfish_factory") as mock_factory:

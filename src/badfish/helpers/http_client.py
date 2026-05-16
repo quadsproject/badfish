@@ -11,13 +11,23 @@ from badfish.helpers.exceptions import BadfishException
 
 class HTTPClient:
 
-    def __init__(self, host: str, username: str, password: str, logger, retries: int = 15, insecure: bool = False):
+    def __init__(
+        self,
+        host: str,
+        username: str,
+        password: str,
+        logger,
+        retries: int = 15,
+        insecure: bool = False,
+        timeout: int = 60,
+    ):
         self.host = host
         self.username = username
         self.password = password
         self.logger = logger
         self.retries = retries
         self.insecure = insecure
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
         self.host_uri = f"https://{host}"
         self.redfish_uri = "/redfish/v1"
         self.root_uri = f"{self.host_uri}{self.redfish_uri}"
@@ -93,7 +103,7 @@ class HTTPClient:
                             uri,
                             headers={"X-Auth-Token": self.token} if self.token else {},
                             ssl=False if self.insecure else True,
-                            timeout=60,
+                            timeout=self.timeout,
                         ) as _response:
                             await _response.read()
                     else:
@@ -101,7 +111,7 @@ class HTTPClient:
                             uri,
                             auth=aiohttp.BasicAuth(self.username, self.password),
                             ssl=False if self.insecure else True,
-                            timeout=60,
+                            timeout=self.timeout,
                         ) as _response:
                             await _response.read()
         except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
@@ -135,6 +145,7 @@ class HTTPClient:
                         data=json.dumps(payload),
                         headers=headers,
                         ssl=False if self.insecure else True,
+                        timeout=self.timeout,
                     ) as _response:
                         if _response.status != 204:
                             await _response.read()
@@ -157,6 +168,7 @@ class HTTPClient:
                         data=json.dumps(payload),
                         headers=headers,
                         ssl=False if self.insecure else True,
+                        timeout=self.timeout,
                     ) as _response:
                         raw_data = await _response.read()
                         self.logger.debug(raw_data)
@@ -182,6 +194,7 @@ class HTTPClient:
                         uri,
                         headers=headers,
                         ssl=False if self.insecure else True,
+                        timeout=self.timeout,
                     ) as _response:
                         raw_data = await _response.read()
                         self.logger.debug(raw_data)

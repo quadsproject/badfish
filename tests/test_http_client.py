@@ -467,3 +467,68 @@ async def test_secure_flag_sets_ssl_true(mock_get):
             called_with_ssl_true = True
             break
     assert called_with_ssl_true, "insecure=False should set ssl=True"
+
+
+# --timeout tests
+
+
+def test_timeout_default_stored_as_client_timeout():
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger)
+    assert isinstance(client.timeout, aiohttp.ClientTimeout)
+    assert client.timeout.total == 60
+
+
+def test_timeout_custom_stored_as_client_timeout():
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, timeout=10)
+    assert isinstance(client.timeout, aiohttp.ClientTimeout)
+    assert client.timeout.total == 10
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_get_raw_passes_timeout(mock_get):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, timeout=5)
+    set_mock_response(mock_get, 200, "{}")
+    await client.get_raw("https://x")
+    _, kwargs = mock_get.call_args
+    assert isinstance(kwargs.get("timeout"), aiohttp.ClientTimeout)
+    assert kwargs["timeout"].total == 5
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.post")
+async def test_post_request_passes_timeout(mock_post):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, timeout=7)
+    set_mock_response(mock_post, 200, "{}", post=True)
+    await client.post_request("https://x", {}, {})
+    _, kwargs = mock_post.call_args
+    assert isinstance(kwargs.get("timeout"), aiohttp.ClientTimeout)
+    assert kwargs["timeout"].total == 7
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.patch")
+async def test_patch_request_passes_timeout(mock_patch):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, timeout=8)
+    set_mock_response(mock_patch, 200, "{}")
+    await client.patch_request("https://x", {}, {})
+    _, kwargs = mock_patch.call_args
+    assert isinstance(kwargs.get("timeout"), aiohttp.ClientTimeout)
+    assert kwargs["timeout"].total == 8
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.delete")
+async def test_delete_request_passes_timeout(mock_delete):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, timeout=9)
+    set_mock_response(mock_delete, 200, "{}")
+    await client.delete_request("https://x", {})
+    _, kwargs = mock_delete.call_args
+    assert isinstance(kwargs.get("timeout"), aiohttp.ClientTimeout)
+    assert kwargs["timeout"].total == 9

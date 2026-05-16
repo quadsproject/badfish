@@ -18,6 +18,7 @@ from io import StringIO
 from rich.console import Console
 from rich.table import Table
 
+from badfish.config import TIMEOUT
 from badfish.helpers import get_now
 from badfish.helpers.parser import parse_arguments
 from badfish.helpers.logger import BadfishLogger
@@ -46,6 +47,7 @@ async def badfish_factory(
     _insecure=False,
     _console=None,
     _progress_disabled=False,
+    _timeout=TIMEOUT,
 ):
     if not _logger:
         bfl = BadfishLogger()
@@ -61,6 +63,7 @@ async def badfish_factory(
         _insecure,
         _console,
         _progress_disabled,
+        _timeout,
     )
     await badfish.init()
     return badfish
@@ -78,6 +81,7 @@ class Badfish:
         _insecure=False,
         _console=None,
         _progress_disabled=False,
+        _timeout=TIMEOUT,
     ):
         self.host = _host
         self.username = _username
@@ -91,7 +95,7 @@ class Badfish:
         self.loop = _loop
         if not self.loop:
             self.loop = asyncio.get_event_loop()
-        self.http_client = HTTPClient(_host, _username, _password, _logger, _retries, _insecure)
+        self.http_client = HTTPClient(_host, _username, _password, _logger, _retries, _insecure, _timeout)
         self.system_resource = None
         self.manager_resource = None
         self.bios_uri = None
@@ -2933,6 +2937,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
     old_password = _args["old_password"]
     screenshot = _args["screenshot"]
     retries = int(_args["retries"])
+    timeout = int(_args.get("timeout", TIMEOUT))
     output = _args["output"]
     get_scp_targets = _args["get_scp_targets"]
     scp_targets = _args["scp_targets"]
@@ -2956,6 +2961,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
             _insecure=insecure,
             _console=console,
             _progress_disabled=progress_disabled,
+            _timeout=timeout,
         )
 
         if _args["host_list"] and not _args["output"]:

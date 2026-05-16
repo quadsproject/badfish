@@ -170,3 +170,60 @@ def test_version_flag(capsys):
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
     assert f"badfish {__version__}" in captured.out
+
+
+# --timeout argument tests
+
+
+def test_timeout_argument_default():
+    from badfish.helpers.parser import parse_arguments
+    from badfish.config import TIMEOUT
+
+    args = parse_arguments(["-H", "host", "-u", "user", "-p", "pass", "--power-state"])
+    assert args["timeout"] == TIMEOUT
+
+
+def test_timeout_argument_custom():
+    from badfish.helpers.parser import parse_arguments
+
+    args = parse_arguments(["-H", "host", "-u", "user", "-p", "pass", "--power-state", "--timeout", "15"])
+    assert args["timeout"] == 15
+
+
+def test_timeout_argument_invalid_type():
+    from badfish.helpers.parser import parse_arguments
+
+    with pytest.raises(SystemExit):
+        parse_arguments(["-H", "host", "-u", "user", "-p", "pass", "--timeout", "notanint"])
+
+
+def test_timeout_argument_rejects_zero():
+    from badfish.helpers.parser import parse_arguments
+
+    with pytest.raises(SystemExit):
+        parse_arguments(["-H", "host", "-u", "user", "-p", "pass", "--timeout", "0"])
+
+
+def test_timeout_argument_rejects_negative():
+    from badfish.helpers.parser import parse_arguments
+
+    with pytest.raises(SystemExit):
+        parse_arguments(["-H", "host", "-u", "user", "-p", "pass", "--timeout", "-5"])
+
+
+@pytest.mark.asyncio
+async def test_execute_badfish_passes_timeout_to_factory(mock_args):
+    host = "test_host"
+    mock_args.update({"u": "user", "p": "pass", "retries": 1, "timeout": 15})
+    logger = MagicMock(spec=logging.Logger)
+
+    with patch("badfish.main.badfish_factory", new_callable=AsyncMock) as mock_factory:
+        mock_badfish = MagicMock()
+        mock_badfish.logger = logger
+        mock_badfish.session_id = None
+        mock_factory.return_value = mock_badfish
+
+        await execute_badfish(host, mock_args, logger, None)
+
+        _, kwargs = mock_factory.call_args
+        assert kwargs.get("_timeout") == 15

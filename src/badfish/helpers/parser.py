@@ -1,7 +1,17 @@
 import argparse
 
 from badfish import __version__
-from badfish.config import RETRIES
+from badfish.config import RETRIES, TIMEOUT
+
+
+def _positive_int(value):
+    try:
+        ivalue = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer")
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError(f"{value} must be a positive integer")
+    return ivalue
 
 
 def create_parser():
@@ -247,6 +257,12 @@ def create_parser():
         "--retries",
         help="Number of retries for executing actions.",
         default=RETRIES,
+    )
+    parser.add_argument(
+        "--timeout",
+        help="Timeout in seconds for each REST API call (must be > 0).",
+        default=TIMEOUT,
+        type=_positive_int,
     )
     parser.add_argument(
         "--insecure",
