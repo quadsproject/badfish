@@ -48,6 +48,9 @@ async def badfish_factory(
     _console=None,
     _progress_disabled=False,
     _timeout=TIMEOUT,
+    _rack=None,
+    _uloc=None,
+    _blade=None,
 ):
     if not _logger:
         bfl = BadfishLogger()
@@ -64,6 +67,9 @@ async def badfish_factory(
         _console,
         _progress_disabled,
         _timeout,
+        _rack,
+        _uloc,
+        _blade,
     )
     await badfish.init()
     return badfish
@@ -82,11 +88,17 @@ class Badfish:
         _console=None,
         _progress_disabled=False,
         _timeout=TIMEOUT,
+        _rack=None,
+        _uloc=None,
+        _blade=None,
     ):
         self.host = _host
         self.username = _username
         self.password = _password
         self.retries = _retries
+        self.rack = _rack
+        self.uloc = _uloc
+        self.blade = _blade
         self.host_uri = "https://%s" % _host
         self.redfish_uri = "/redfish/v1"
         self.root_uri = "%s%s" % (self.host_uri, self.redfish_uri)
@@ -164,19 +176,25 @@ class Badfish:
     async def get_interfaces_by_type(self, host_type, _interfaces_path):
         definitions = await self.read_yaml(_interfaces_path)
 
-        host_name_split = self.host.split(".")[0].split("-")
+        host_name_split = self.host.split(":")[0].split(".")[0].split("-")
         host_model = None
-        rack = None
-        uloc = None
         host_blade = None
         prefix = [host_type]
+
         if len(host_name_split) > 1:
             host_model = host_name_split[-1]
-            rack = host_name_split[1]
-            uloc = host_name_split[2]
-            prefix.extend([rack, uloc])
+            rack = self.rack if self.rack is not None else host_name_split[1]
+            uloc = self.uloc if self.uloc is not None else (
+                host_name_split[2] if len(host_name_split) > 2 else None
+            )
+            for val in [rack, uloc]:
+                if val is not None:
+                    prefix.append(val)
 
-        if len(host_name_split) > 4:
+        if self.blade is not None:
+            host_blade = self.blade
+            prefix.append(host_blade)
+        elif len(host_name_split) > 4:
             host_blade = host_name_split[3]
             prefix.append(host_blade)
 
@@ -2904,6 +2922,9 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
     host_type = _args["t"]
     interfaces_path = _args["i"]
     force = _args["force"]
+    rack = _args.get("rack")
+    uloc = _args.get("uloc")
+    blade = _args.get("blade")
     pxe = _args["pxe"]
     device = _args["boot_to"]
     boot_to_type = _args["boot_to_type"]
@@ -2974,6 +2995,9 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
             _console=console,
             _progress_disabled=progress_disabled,
             _timeout=timeout,
+            _rack=rack,
+            _uloc=uloc,
+            _blade=blade,
         )
 
         if _args["host_list"] and not _args["output"]:

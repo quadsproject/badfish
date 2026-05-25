@@ -26,6 +26,9 @@ def create_parser():
     parser.add_argument("-p", help="BMC password")
     parser.add_argument("-i", help="Path to interfaces yaml", default=None)
     parser.add_argument("-t", help="Type of host as defined on interfaces yaml")
+    parser.add_argument("--rack", help="Rack name of the host", default=None)
+    parser.add_argument("--uloc", help="U-location name of the host", default=None)
+    parser.add_argument("--blade", help="Blade name of the host", default=None)
     parser.add_argument("-l", "--log", help="Optional argument for logging results to a file")
     parser.add_argument(
         "-o",
