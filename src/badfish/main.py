@@ -289,13 +289,13 @@ class Badfish:
 
     async def set_bios_attribute(self, attributes):
         data = await self.get_bios_attributes_registry()
-        accepted = False
         for entry in data["RegistryEntries"]["Attributes"]:
             entries = [low_entry.lower() for low_entry in entry.values() if isinstance(low_entry, str)]
             _warnings = []
             _not_found = []
             _remove = []
             for attribute, value in attributes.items():
+                accepted = False
                 if attribute.lower() in entries:
                     for values in entry.items():
                         if values[0] == "Value":
@@ -303,6 +303,7 @@ class Badfish:
                             for accepted_value in accepted_values:
                                 if value.lower() == accepted_value.lower():
                                     value = accepted_value
+                                    attributes[attribute] = accepted_value
                                     accepted = True
                             if not accepted:
                                 _warnings.append(f"List of accepted values for '{attribute}': {accepted_values}")
@@ -2964,6 +2965,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
     get_bios_attribute = _args["get_bios_attribute"]
     attribute = _args["attribute"]
     value = _args["value"]
+    attribute_value = _args["attribute_value"]
     set_bios_password = _args["set_bios_password"]
     remove_bios_password = _args["remove_bios_password"]
     new_password = _args["new_password"]
@@ -3083,8 +3085,16 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
                 for attribute, value in data["Attributes"].items():
                     logger.info(f"{attribute}: {value}")
         elif set_bios_attribute:
-            payload = {attribute: value}
-            await badfish.set_bios_attribute(payload)
+            attributes = {}
+            if attribute_value:
+                for pair in attribute_value:
+                    name, sep, attr_value = pair.partition("=")
+                    if not sep or not name.strip() or not attr_value.strip():
+                        raise BadfishException(f"Invalid attribute/value pair supplied: {pair}")
+                    attributes[name.strip()] = attr_value.strip()
+            else:
+                attributes = {attribute: value}
+            await badfish.set_bios_attribute(attributes)
         elif set_bios_password:
             await badfish.set_bios_password(old_password, new_password)
         elif remove_bios_password:
