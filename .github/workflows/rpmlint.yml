@@ -1,0 +1,35 @@
+name: RPM Lint
+
+on:
+  pull_request:
+    types: [opened, edited]
+    branches: [development, master]
+
+  push:
+    branches: [development, master]
+
+jobs:
+  rpmlint:
+    name: Run rpmlint
+    runs-on: ubuntu-latest
+    container: fedora:latest
+
+    steps:
+      - name: Install Git
+        run: dnf -y install git
+
+      - name: Check out Git repository
+        uses: actions/checkout@v4
+
+      - name: Install rpmlint and build dependencies
+        run: |
+          dnf -y install make rpmlint python3-devel pyproject-rpm-macros \
+            python3-setuptools python3-wheel python3-pip python3-build \
+            python3-pyyaml python3-aiohttp python3-async-lru python3-rich \
+            python3-pytest python3-pytest-asyncio glibc-langpack-en
+
+      - name: Build RPM and run rpmlint
+        run: |
+          # Work around GHA permission/safe.directory issue with the checkout
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make -C rpm rpmlint
