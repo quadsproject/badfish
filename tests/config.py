@@ -974,6 +974,9 @@ ATTRIBUTE_BAD = "NotThere"
 ATTR_VALUE_OK = "Enabled"
 ATTR_VALUE_BAD = "NotAllowed"
 ATTR_VALUE_DIS = "Disabled"
+ATTRIBUTE_OK_2 = "BootMode"
+ATTR_VALUE_OK_2 = "Uefi"
+ATTR_VALUE_DIS_2 = "Bios"
 
 BIOS_RESPONSE_OK = '{"Attributes":{"%s": "%s"}}' % (ATTRIBUTE_OK, ATTR_VALUE_OK)
 BIOS_RESPONSE_DIS = '{"Attributes":{"%s": "%s"}}' % (ATTRIBUTE_OK, ATTR_VALUE_DIS)
@@ -1016,6 +1019,32 @@ BIOS_REGISTRY_2 = {
     "WriteOnly": "False",
 }
 BIOS_REGISTRY_OK = BIOS_REGISTRY_BASE % str([BIOS_REGISTRY_1, BIOS_REGISTRY_2])
+BIOS_REGISTRY_3 = {
+    "AttributeName": "BootMode",
+    "CurrentValue": "None",
+    "DisplayName": "Boot Mode",
+    "DisplayOrder": 9001,
+    "HelpText": "Select the boot mode.",
+    "Hidden": "False",
+    "Immutable": "False",
+    "MenuPath": "./BootSettingsRef",
+    "ReadOnly": "False",
+    "ResetRequired": "True",
+    "Type": "Enumeration",
+    "Value": [
+        {"ValueDisplayName": "Uefi", "ValueName": "Uefi"},
+        {"ValueDisplayName": "Bios", "ValueName": "Bios"},
+    ],
+    "WarningText": "None",
+    "WriteOnly": "False",
+}
+BIOS_REGISTRY_MULTI = BIOS_REGISTRY_BASE % str([BIOS_REGISTRY_2, BIOS_REGISTRY_3])
+BIOS_RESPONSE_MULTI = '{"Attributes":{"%s": "%s", "%s": "%s"}}' % (
+    ATTRIBUTE_OK,
+    ATTR_VALUE_DIS,
+    ATTRIBUTE_OK_2,
+    ATTR_VALUE_DIS_2,
+)
 BIOS_SET_OK = """\
 - INFO     - Command passed to set BIOS attribute pending values.
 - INFO     - Command passed to GracefulRestart server, code return is 200.
@@ -1033,6 +1062,16 @@ BIOS_SET_BAD_ATTR = """\
 - WARNING  - Could not retrieve Bios Attributes.
 - ERROR    - NotThere not found. Please check attribute name.
 - ERROR    - Attribute not found
+"""
+BIOS_SET_MULTI_BAD_VALUE = (
+    """\
+- WARNING  - List of accepted values for '%s': ['Uefi', 'Bios']
+- ERROR    - Value not accepted
+"""
+    % ATTRIBUTE_OK_2
+)
+BIOS_SET_MULTI_BAD_PAIR = """\
+- ERROR    - Invalid attribute/value pair supplied: ProcC1E
 """
 BIOS_GET_ALL_OK = f"""- INFO     - {ATTRIBUTE_OK}: {ATTR_VALUE_OK}\n"""
 BIOS_GET_ONE_OK = """\

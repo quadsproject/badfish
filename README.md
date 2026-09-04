@@ -68,6 +68,7 @@
          * [Get BIOS attributes](#get-bios-attributes)
          * [Get specific BIOS attribute](#get-specific-bios-attribute)
          * [Set BIOS attribute](#set-bios-attribute)
+            * [Set multiple BIOS attributes](#set-multiple-bios-attributes)
          * [Change between BIOS and UEFI modes](#change-between-bios-and-uefi-modes)
             * [Querying bootmode](#querying-bootmode)
             * [Setting UEFI mode](#setting-uefi-mode)
@@ -603,6 +604,11 @@ badfish -H mgmt-your-server.example.com --get-bios-attribute --attribute ProcC1E
 To change the value of a bios attribute you can use ```--set-bios-attribute``` passing both ```--attribute``` and ```--value```.
 ```bash
 badfish -H mgmt-your-server.example.com --set-bios-attribute --attribute ProcC1E --value Enabled
+```
+#### Set multiple BIOS attributes
+To set multiple BIOS attributes in one call, repeat ```--attribute-value``` with an ```attribute=value``` pair each time. All attributes are applied in a single operation and one reboot.
+```bash
+badfish -H mgmt-your-server.example.com --set-bios-attribute --attribute-value ProcC1E=Enabled --attribute-value BootMode=Uefi
 ```
 > [!NOTE]
 > You can get the list of allowed values you can pass for that attribute by looking at the attribute details via ```--get-bios-attribute``` for that specific one.
