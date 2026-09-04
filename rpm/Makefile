@@ -37,6 +37,16 @@ srpm: all
 clean:
 	rm -rf *.src.rpm *.tar.gz *.spec noarch
 
+rpmlint: tarball badfish.spec
+	rm -rf $(CURDIR)/rpmbuild
+	mkdir -p $(CURDIR)/rpmbuild/SOURCES $(CURDIR)/rpmbuild/SPECS
+	cp $(TARBALL) $(CURDIR)/rpmbuild/SOURCES/
+	cp badfish.spec $(CURDIR)/rpmbuild/SPECS/
+	echo "==> Building RPM from spec"
+	rpmbuild -ba --define "_topdir $(CURDIR)/rpmbuild" $(CURDIR)/rpmbuild/SPECS/badfish.spec
+	echo "==> Running rpmlint"
+	rpmlint $(CURDIR)/badfish.spec $$(find $(CURDIR)/rpmbuild/RPMS $(CURDIR)/rpmbuild/SRPMS -name '*.rpm' -type f 2>/dev/null)
+
 test: tarball badfish.spec
 	@echo "Moving tarball to rpmbuild/SOURCES directory"
 	mkdir -p ~/rpmbuild/SOURCES
