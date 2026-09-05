@@ -108,6 +108,11 @@ async def test_jobs_lifecycle(client):
     job_id = resp.headers["Location"].split("/")[-1]
     assert job_id.startswith("JID_")
 
+    # Jobs report Running on the first poll, then Completed, so client job
+    # loops see a real lifecycle instead of instant success.
+    job = await (await client.get(f"{manager}/Jobs/{job_id}", headers=headers)).json()
+    assert job["JobState"] == "Running"
+    assert job["PercentComplete"] == 0
     job = await (await client.get(f"{manager}/Jobs/{job_id}", headers=headers)).json()
     assert job["JobState"] == "Completed"
     assert job["PercentComplete"] == 100
@@ -161,8 +166,9 @@ async def test_not_found_and_tasks(client):
     body = await resp.json()
     assert body["error"]["@Message.ExtendedInfo"][0]["Message"]
 
-    task = await (await client.get(f"{_ROOT}/TaskService/Tasks/1", headers=headers)).json()
-    assert task["Oem"]["Dell"]["PercentComplete"] == 100
+    # Unknown task ids 404 like real iDRAC; only tasks created by SCP import
+    # resolve (covered in test_oem_actions).
+    assert (await client.get(f"{_ROOT}/TaskService/Tasks/1", headers=headers)).status == 404
 
 
 async def test_account_service_and_quads_admin(client):
@@ -599,6 +605,8 @@ async def test_oem_actions(client):
     assert imp.status == 202 and imp.headers["Location"].startswith(f"{_ROOT}/TaskService/Tasks/")
     imp_task = await (await client.get(imp.headers["Location"], headers=headers)).json()
     assert imp_task["Oem"]["Dell"]["Message"]  # badfish.import_scp reads this on every poll
+    # Real iDRAC 404s unknown task ids; only tasks created by import resolve.
+    assert (await client.get(f"{_ROOT}/TaskService/Tasks/9999", headers=headers)).status == 404
 
     shot = await client.post(f"{MANAGER}/Actions/Oem/DellLCService.ExportServerScreenShot", json={}, headers=headers)
     assert shot.status == 404
