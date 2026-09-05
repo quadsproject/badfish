@@ -129,6 +129,7 @@ class State:
         self.boot_enabled = "Disabled"
         self.vmedia_image = None
         self.jobs = {}
+        self.tasks = set()
         self.sessions = {}
         self._job_n = 0
         self._restart_task = None
@@ -327,18 +328,30 @@ def _m_firmware(uri, state):
     return data
 
 
-def _m_job(uri, state):
+def _m_job(uri, state, consume=True):
+    """Render a job; jobs report `Running` on their first couple of reads to
+    exercise badfish's poll-and-retry client loops, then `Completed`.
+
+    `consume=False` renders without advancing the read counter (used to build
+    the response body of the job-creation POST so the first client poll sees
+    the running state).
+    """
     job_id = uri.rsplit("/", 1)[-1]
     job = state.jobs.get(job_id)
     if job is None:
         return None
+    reads = job.get("reads", 0)
+    if consume:
+        reads += 1
+        job["reads"] = reads
+    running = reads <= 1
     data = _tmpl("job")
     data["@odata.id"] = uri
     data["Id"] = job_id
     data["Name"] = job.get("Name", "Configure: BIOS.Setup.1-1")
-    data["Message"] = "Job completed successfully."
-    data["PercentComplete"] = 100
-    data["JobState"] = "Completed"
+    data["Message"] = "Job is running." if running else "Job completed successfully."
+    data["PercentComplete"] = 0 if running else 100
+    data["JobState"] = "Running" if running else "Completed"
     if "SystemConfiguration" in job:
         data["SystemConfiguration"] = {"ComponentResults": [], "Id": "SystemConfiguration"}
     return data
@@ -372,9 +385,15 @@ def _m_port(uri, state):
 
 
 def _m_task(uri, state):
+    # Real iDRAC 404s unknown task ids; badfish only polls tasks it created
+    # via SCP import, so unknown-404 mirrors real usage without breaking the
+    # client's own poll.
+    task_id = uri.rsplit("/", 1)[-1]
+    if task_id not in state.tasks:
+        return None
     data = _tmpl("task")
     data["@odata.id"] = uri
-    data["Id"] = uri.rsplit("/", 1)[-1]
+    data["Id"] = task_id
     return data
 
 
@@ -681,7 +700,9 @@ async def _post(_request):
         job_id = f"JID_{state._job_n:016d}"
         state.jobs[job_id] = {"TargetSettingsURI": body.get("TargetSettingsURI")}
         return _json(
-            _m_job(f"{MANAGER}/Jobs/{job_id}", state), status=200, headers={"Location": f"{MANAGER}/Jobs/{job_id}"}
+            _m_job(f"{MANAGER}/Jobs/{job_id}", state, consume=False),
+            status=200,
+            headers={"Location": f"{MANAGER}/Jobs/{job_id}"},
         )
 
     if path == f"{MANAGER}/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia":
@@ -726,6 +747,7 @@ async def _post(_request):
     if path.endswith("/Actions/Oem/EID_674_Manager.ImportSystemConfiguration"):
         state._job_n += 1
         job_id = f"JID_{state._job_n:016d}"
+        state.tasks.add(job_id)
         return web.Response(status=202, headers={"Location": f"{ROOT}/TaskService/Tasks/{job_id}"})
 
     if "DellLCService" in path and "ExportServerScreenShot" in path:
