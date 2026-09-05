@@ -237,7 +237,6 @@ _STATIC_URI = {
     UPDATESERVICE: "update_service",
     f"{ROOT}/Dell/Managers/{SYSCONF['manager_id']}/DellJobService": "dell_job_service",
     f"{ROOT}/Dell/Systems/{SYSCONF['system_id']}/DellOSDeploymentService": "dell_os_deployment_service",
-    f"{CHASSIS}/Power": "chassis_power",
 }
 
 
@@ -807,4 +806,4 @@ def run_daemon(args):
     context.load_cert_chain(str(_CERTS / "emulator.crt"), str(_CERTS / "emulator.key"))
     host = args.get("bind") or "127.0.0.1"
     port = int(args.get("port") or 8443)
-    web.run_app(app, host=host, port=port, ssl_context=context)
+    return web.run_app(app, host=host, port=port, ssl_context=context)

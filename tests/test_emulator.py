@@ -1,3 +1,5 @@
+import asyncio
+import base64
 import ssl
 from pathlib import Path
 
@@ -11,6 +13,10 @@ from badfish.main import badfish_factory
 _CERTS = Path(__file__).parent.parent / "src" / "badfish" / "emulator" / "certs"
 _ROOT = "/redfish/v1"
 ACCOUNTS = f"{_ROOT}/AccountService/Accounts"
+SYSTEM = f"{_ROOT}/Systems/System.Embedded.1"
+MANAGER = f"{_ROOT}/Managers/iDRAC.Embedded.1"
+CHASSIS = f"{_ROOT}/Chassis/System.Embedded.1"
+FIRMWARE = f"{_ROOT}/UpdateService/FirmwareInventory"
 
 
 async def _client(app):
@@ -173,6 +179,7 @@ async def test_account_service_and_quads_admin(client):
     assert acct["Enabled"] is True
     # real iDRAC never returns Password on account GET
     assert "Password" not in acct
+    assert (await client.get(f"{ACCOUNTS}/ghost", headers=headers)).status == 404
 
 
 async def test_admin_creates_user_and_store_persists(tmp_path):
@@ -341,6 +348,256 @@ async def test_emulator_end_to_end(monkeypatch, tmp_path):
         if bf:
             await bf.delete_session()
         await runner.cleanup()
+
+
+async def test_root_path_public_and_missing(client):
+    resp = await client.get("/")
+    assert resp.status == 404
+
+
+async def test_inventory_collections_and_members(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+
+    nics = await (await client.get(f"{SYSTEM}/EthernetInterfaces", headers=headers)).json()
+    assert [m["@odata.id"] for m in nics["Members"]] == [
+        f"{SYSTEM}/EthernetInterfaces/NIC.Integrated.1-1-1",
+        f"{SYSTEM}/EthernetInterfaces/NIC.Integrated.1-2-1",
+    ]
+    nic = await (await client.get(f"{SYSTEM}/EthernetInterfaces/NIC.Integrated.1-1-1", headers=headers)).json()
+    assert nic["MACAddress"] == "00:5c:52:31:3a:9c"
+    assert nic["LinkStatus"] == "Up"
+
+    procs = await (await client.get(f"{SYSTEM}/Processors", headers=headers)).json()
+    assert procs["Members@odata.count"] == 2
+    cpu = await (await client.get(f"{SYSTEM}/Processors/CPU.Socket.1", headers=headers)).json()
+    assert cpu["Model"] and cpu["TotalCores"] > 0
+
+    mem = await (await client.get(f"{SYSTEM}/Memory", headers=headers)).json()
+    assert mem["Members@odata.count"] == 2
+    dimm = await (await client.get(f"{SYSTEM}/Memory/DIMM.Socket.A1", headers=headers)).json()
+    assert dimm["CapacityMiB"] == 32768
+    assert dimm["Manufacturer"] == "Micron"
+
+    assert (await client.get(f"{SYSTEM}/Memory/DIMM.Socket.ZZ", headers=headers)).status == 404
+    assert (await client.get(f"{FIRMWARE}/NOPE", headers=headers)).status == 404
+    assert (await client.get(f"{MANAGER}/Jobs/NOPE", headers=headers)).status == 404
+
+
+async def test_sessions_and_registry(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+
+    login = await client.post(f"{_ROOT}/SessionService/Sessions", json={"UserName": "quads", "Password": "quads"})
+    loc = login.headers["Location"]
+    session = await (await client.get(loc, headers=headers)).json()
+    assert session["UserName"] == "quads"
+    assert session["Id"]
+
+    coll = await (await client.get(f"{_ROOT}/SessionService/Sessions", headers=headers)).json()
+    assert coll["Members@odata.count"] >= 1
+    assert (await client.get(f"{_ROOT}/SessionService/Sessions/9999", headers=headers)).status == 404
+
+    reg = await (await client.get(f"{_ROOT}/Registries/NetworkAttributesRegistry_1.0.0.json", headers=headers)).json()
+    assert reg["@odata.type"].startswith("#DellNetworkAttributesRegistry")
+
+
+async def test_chassis_power_dynamic(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    power = await (await client.get(f"{CHASSIS}/Power", headers=headers)).json()
+    assert power["PowerControl"][0]["PowerConsumedWatts"] == 120
+    await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "On"}, headers=headers)
+    power = await (await client.get(f"{CHASSIS}/Power", headers=headers)).json()
+    assert power["PowerControl"][0]["PowerConsumedWatts"] == 320
+
+
+async def test_malformed_json_400s(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token, "Content-Type": "application/json"}
+    bad = b'{"UserName": '
+    bad_public = {"Content-Type": "application/json"}
+
+    checks = [
+        ("POST", f"{_ROOT}/SessionService/Sessions", None, bad_public),
+        ("POST", ACCOUNTS, None, headers),
+        ("POST", f"{_ROOT}/AccountService/Actions/AccountService.ChangePassword", None, headers),
+        ("POST", f"{SYSTEM}/Actions/ComputerSystem.Reset", None, headers),
+        ("POST", f"{MANAGER}/Jobs", None, headers),
+        ("POST", f"{MANAGER}/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia", None, headers),
+        ("PATCH", SYSTEM, None, headers),
+        ("PATCH", f"{ACCOUNTS}/quads", None, headers),
+    ]
+    for method, url, _json, hdrs in checks:
+        resp = await client.request(method, url, data=bad, headers=hdrs)
+        assert resp.status == 400, f"{method} {url} -> {resp.status}"
+
+
+async def test_change_password_errors(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    action = f"{_ROOT}/AccountService/Actions/AccountService.ChangePassword"
+    wrong = await client.post(
+        action, json={"UserName": "quads", "OldPassword": "nope", "NewPassword": "x"}, headers=headers
+    )
+    assert wrong.status == 401
+    missing = await client.post(action, json={"UserName": "quads", "OldPassword": "quads"}, headers=headers)
+    assert missing.status == 400
+
+
+async def test_account_patch_edges(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"Password": ""}, headers=headers)).status == 400
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "Superuser"}, headers=headers)).status == 400
+    assert (await client.patch(f"{ACCOUNTS}/ghost", json={"RoleId": "Operator"}, headers=headers)).status == 404
+
+    await client.post(
+        ACCOUNTS, json={"UserName": "admin2", "Password": "pw", "RoleId": "Administrator"}, headers=headers
+    )
+    assert (await client.patch(f"{ACCOUNTS}/admin2", json={"Enabled": False}, headers=headers)).status == 200
+    assert (await client.patch(f"{ACCOUNTS}/admin2", json={"Password": "newpw"}, headers=headers)).status == 200
+    assert (await client.patch(f"{ACCOUNTS}/admin2", json={"Enabled": True}, headers=headers)).status == 200
+    assert await _login(client, "admin2", "newpw")
+
+
+async def test_account_delete(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    await client.post(ACCOUNTS, json={"UserName": "dave", "Password": "pw", "RoleId": "Operator"}, headers=headers)
+    assert (await client.delete(f"{ACCOUNTS}/dave", headers=headers)).status == 200
+    assert (await client.delete(f"{ACCOUNTS}/dave", headers=headers)).status == 404
+
+
+async def test_reset_variants_and_bios_actions(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+
+    assert (
+        await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "ForceRestart"}, headers=headers)
+    ).status == 204
+    await asyncio.sleep(2.2)  # restart task flips power back on
+    body = await (await client.get(SYSTEM, headers=headers)).json()
+    assert body["PowerState"] == "On"
+
+    assert (
+        await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "NukeIt"}, headers=headers)
+    ).status == 400
+    assert (await client.post(f"{SYSTEM}/Bios/Actions/Bios.ResetBios", json={}, headers=headers)).status == 200
+    assert (await client.post(f"{SYSTEM}/Bios/Actions/Bios.ChangePassword", json={}, headers=headers)).status == 204
+    assert (await client.post(f"{MANAGER}/Actions/Manager.Reset", json={}, headers=headers)).status == 204
+
+
+async def test_oem_actions(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    dellsvc = f"{_ROOT}/Dell/Systems/System.Embedded.1/DellOSDeploymentService"
+    jobsvc = f"{_ROOT}/Dell/Managers/iDRAC.Embedded.1/DellJobService"
+
+    await client.post(f"{MANAGER}/Jobs", json={"TargetSettingsURI": "/redfish/v1/x"}, headers=headers)
+    resp = await client.post(f"{jobsvc}/Actions/DellJobService.DeleteJobQueue", json={}, headers=headers)
+    assert resp.status == 200
+    jobs = await (await client.get(f"{MANAGER}/Jobs", headers=headers)).json()
+    assert jobs["Members@odata.count"] == 0
+
+    attach = await client.post(f"{dellsvc}/Actions/DellOSDeploymentService.GetAttachStatus", json={}, headers=headers)
+    assert attach.status == 200
+    assert (await attach.json())["ISOAttachStatus"] == "Detached"
+
+    boot = await client.post(f"{dellsvc}/Actions/DellOSDeploymentService.BootToNetworkISO", json={}, headers=headers)
+    assert boot.status == 202
+    detach = await client.post(f"{dellsvc}/Actions/DellOSDeploymentService.DetachISOImage", json={}, headers=headers)
+    assert detach.status == 204
+
+    exp = await client.post(
+        f"{MANAGER}/Actions/Oem/EID_674_Manager.ExportSystemConfiguration", json={}, headers=headers
+    )
+    assert exp.status == 202 and exp.headers["Location"].startswith(f"{MANAGER}/Jobs/")
+    imp = await client.post(
+        f"{MANAGER}/Actions/Oem/EID_674_Manager.ImportSystemConfiguration", json={}, headers=headers
+    )
+    assert imp.status == 202 and imp.headers["Location"].startswith(f"{_ROOT}/TaskService/Tasks/")
+
+    shot = await client.post(f"{MANAGER}/Actions/Oem/DellLCService.ExportServerScreenShot", json={}, headers=headers)
+    assert shot.status == 404
+    assert (await client.post(f"{_ROOT}/NoSuchAction", json={}, headers=headers)).status == 405
+
+
+async def test_patch_and_delete_fallthrough(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+
+    assert (await client.patch(f"{SYSTEM}/Bios/Settings", json={}, headers=headers)).status == 200
+    assert (await client.patch(f"{SYSTEM}/BootSources/Settings", json={}, headers=headers)).status == 200
+    assert (
+        await client.patch(f"{MANAGER}/DellNetworkAttributes/NIC/Attributes/Settings", json={}, headers=headers)
+    ).status == 204
+    assert (await client.patch(f"{_ROOT}/NoSuchThing", json={}, headers=headers)).status == 405
+    assert (await client.delete(f"{_ROOT}/NoSuchThing", headers=headers)).status == 405
+
+    login = await client.post(f"{_ROOT}/SessionService/Sessions", json={"UserName": "quads", "Password": "quads"})
+    loc = login.headers["Location"]
+    assert (await client.delete(loc, headers=headers)).status == 200
+    assert (await client.delete(loc, headers=headers)).status == 404
+
+    await client.post(f"{MANAGER}/Jobs", json={"TargetSettingsURI": "/x"}, headers=headers)
+    assert (await client.delete(f"{MANAGER}/Jobs/JID_CLEARALL_FORCE", headers=headers)).status == 200
+    assert (await client.delete(f"{MANAGER}/Jobs/MISSING", headers=headers)).status == 200
+
+
+async def test_basic_auth_garbage(client):
+    junk = base64.b64encode(b"\xff\xfe").decode()
+    assert (await client.get(f"{_ROOT}/Systems", headers={"Authorization": f"Basic {junk}"})).status == 401
+    assert (await client.get(f"{_ROOT}/Systems", headers={"Authorization": "Bearer x"})).status == 401
+
+
+async def test_store_corrupt_file_recovers(tmp_path):
+    users_file = tmp_path / "users.json"
+    users_file.write_text("{not json")
+    app = emulator.create_app(str(users_file))
+    c = await _client(app)
+    assert await _login(c)
+    await c.close()
+
+
+async def test_run_daemon_serves_live(monkeypatch, tmp_path):
+    monkeypatch.setenv("BADFISH_EMULATOR_USERS", str(tmp_path / "users.json"))
+    captured = {}
+
+    async def _fake_run_app(app, host="127.0.0.1", port=8443, ssl_context=None, **kwargs):
+        captured["host"], captured["port"], captured["ssl"] = host, port, ssl_context is not None
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host, 0, ssl_context=ssl_context)
+        await site.start()
+        port = runner.addresses[0][1]
+        from aiohttp import ClientSession
+
+        async with ClientSession() as sess:
+            async with sess.get(f"https://127.0.0.1:{port}/redfish/v1", ssl=False) as resp:
+                assert resp.status == 200
+        await runner.cleanup()
+
+    monkeypatch.setattr("badfish.emulator.web.run_app", _fake_run_app)
+    result = await emulator.run_daemon({"bind": "127.0.0.1", "port": "18445", "redfish_emulator": True})
+    assert result is None
+    assert captured == {"host": "127.0.0.1", "port": 18445, "ssl": True}
+
+
+def test_main_redfish_emulator_routes_to_run_daemon(monkeypatch):
+    from badfish.main import main
+
+    calls = {}
+
+    def _fake_run_daemon(args):
+        calls["args"] = args
+        return "daemon-started"
+
+    monkeypatch.setattr("badfish.emulator.run_daemon", _fake_run_daemon)
+    rc = main(["--redfish-emulator", "--port", "9000", "--bind", "localhost"])
+    assert rc == "daemon-started"
+    assert calls["args"]["port"] == 9000
+    assert calls["args"]["bind"] == "localhost"
 
 
 def test_parser_has_emulator_flags():
