@@ -1,0 +1,16 @@
+{
+  "@odata.type": "#AccountService.v1_7_0.AccountService",
+  "Id": "AccountService",
+  "Name": "Account Service",
+  "ServiceEnabled": true,
+  "MinPasswordLength": 4,
+  "MaxPasswordLength": 20,
+  "Accounts": {
+    "@odata.id": "/redfish/v1/AccountService/Accounts"
+  },
+  "Actions": {
+    "#AccountService.ChangePassword": {
+      "target": "/redfish/v1/AccountService/Actions/AccountService.ChangePassword"
+    }
+  }
+}

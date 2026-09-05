@@ -37,6 +37,11 @@ _CERTS = _BASE / "emulator" / "certs"
 USERNAME = os.environ.get("BADFISH_EMULATOR_USER", "quads")
 PASSWORD = os.environ.get("BADFISH_EMULATOR_PASSWORD", "quads")
 
+# Flat JSON user store, created at runtime. Throwaway by default; point
+# BADFISH_EMULATOR_USERS elsewhere to persist between emulator runs.
+USERS_PATH = os.environ.get("BADFISH_EMULATOR_USERS", "/tmp/badfish_emulator_users.json")
+ROLES = ("ReadOnly", "Operator", "Administrator")
+
 # Single source of truth for the fake host's hardware identity. Changing a
 # value here changes every resource that reports it; no template editing needed.
 SYSCONF = {
@@ -95,6 +100,8 @@ MANAGER = f"{ROOT}/Managers/{SYSCONF['manager_id']}"
 CHASSIS = f"{ROOT}/Chassis/{SYSCONF['chassis_id']}"
 UPDATESERVICE = f"{ROOT}/UpdateService"
 FIRMWARE = f"{UPDATESERVICE}/FirmwareInventory"
+ACCOUNTSERVICE = f"{ROOT}/AccountService"
+ACCOUNTS_URI = f"{ACCOUNTSERVICE}/Accounts"
 
 _RESTART_TYPES = {"GracefulRestart", "ForceRestart"}  # rebooted: off then on
 _RESET_STATES = {  # one-shot power targets
@@ -116,7 +123,8 @@ _STATE_KEY = _StateKey("state", object)
 class State:
     """Mutable fake-driver state shared by the mock BMC's resources."""
 
-    def __init__(self):
+    def __init__(self, store=None):
+        self.store = store
         self.power = "Off"
         self.boot_target = "None"
         self.boot_enabled = "Disabled"
@@ -125,6 +133,49 @@ class State:
         self.sessions = {}
         self._job_n = 0
         self._restart_task = None
+
+
+class _UserStore:
+    """Flat JSON user store: username -> {password, role, enabled}."""
+
+    def __init__(self, path, seed_user, seed_password):
+        self.path = path
+        self.users = {}
+        self._load(seed_user, seed_password)
+
+    def _load(self, seed_user, seed_password):
+        if self.path and os.path.exists(self.path):
+            try:
+                with open(self.path) as fh:
+                    data = json.load(fh)
+                self.users = data.get("users", {}) or {}
+                return
+            except (ValueError, OSError):
+                pass
+        self.users = {seed_user: {"password": seed_password, "role": "Administrator", "enabled": True}}
+        self._save()
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        tmp = f"{self.path}.tmp"
+        with open(tmp, "w") as fh:
+            json.dump({"users": self.users}, fh, indent=2)
+        os.replace(tmp, self.path)
+
+    def authenticate(self, username, password):
+        user = self.users.get(username)
+        return bool(user and user["enabled"] and user["password"] == password)
+
+    def role(self, username):
+        return self.users.get(username, {}).get("role", "ReadOnly")
+
+    def set_user(self, username, password, role, enabled=True):
+        self.users[username] = {"password": password, "role": role, "enabled": enabled}
+        self._save()
+
+    def delete_user(self, username):
+        self.users.pop(username, None)
+        self._save()
 
 
 # --- template store ---------------------------------------------------------
@@ -182,6 +233,7 @@ _STATIC_URI = {
     f"{ROOT}/Managers": "managers",
     MANAGER: "manager",
     f"{CHASSIS}": "chassis",
+    ACCOUNTSERVICE: "account_service",
     UPDATESERVICE: "update_service",
     f"{ROOT}/Dell/Managers/{SYSCONF['manager_id']}/DellJobService": "dell_job_service",
     f"{ROOT}/Dell/Systems/{SYSCONF['system_id']}/DellOSDeploymentService": "dell_os_deployment_service",
@@ -202,6 +254,8 @@ def _collection_uri(uri, state):
         return _collection("Job", uri, list(state.jobs.keys()))
     if uri == f"{ROOT}/SessionService/Sessions":
         return _collection("Session", uri, [s["id"] for s in state.sessions.values()])
+    if uri == ACCOUNTS_URI:
+        return _collection("ManagerAccount", uri, sorted(state.store.users))
     if uri == f"{MANAGER}/VirtualMedia":
         return _collection("VirtualMedia", uri, ["CD"])
     return None
@@ -320,6 +374,21 @@ def _m_registry_file(uri, state):
     return _static_doc("network_attributes_registry", uri)
 
 
+def _m_account(uri, state):
+    username = uri.rsplit("/", 1)[-1]
+    user = state.store.users.get(username)
+    if user is None:
+        return None
+    data = _tmpl("account")
+    data["@odata.id"] = uri
+    data["Id"] = username
+    data["Name"] = username
+    data["UserName"] = username
+    data["RoleId"] = user["role"]
+    data["Enabled"] = user["enabled"]
+    return data
+
+
 _MEMBER_PREFIXES = (
     (f"{SYSTEM}/EthernetInterfaces/", _m_nic),
     (f"{SYSTEM}/Processors/", _m_processor),
@@ -327,6 +396,7 @@ _MEMBER_PREFIXES = (
     (f"{FIRMWARE}/", _m_firmware),
     (f"{MANAGER}/Jobs/", _m_job),
     (f"{ROOT}/SessionService/Sessions/", _m_session),
+    (f"{ACCOUNTS_URI}/", _m_account),
     (f"{MANAGER}/VirtualMedia/", _m_vmedia),
     (f"{ROOT}/TaskService/Tasks/", _m_task),
     (f"{ROOT}/Registries/NetworkAttributesRegistry_", _m_registry_file),
@@ -422,14 +492,26 @@ def _delete_session(state, session_id):
     return False
 
 
-def _basic_ok(auth_header):
+def _basic_creds(auth_header):
     if not auth_header.startswith("Basic "):
-        return False
+        return None
     try:
         user, _, password = base64.b64decode(auth_header[6:]).decode().partition(":")
     except (ValueError, UnicodeDecodeError):
-        return False
-    return (user, password) == (USERNAME, PASSWORD)
+        return None
+    return user, password
+
+
+def _forbidden(message):
+    return _json(
+        _error(message, "Ask an administrator to grant the required privileges."),
+        status=403,
+    )
+
+
+def _enabled_administrators(state):
+    users = state.store.users if state.store else {}
+    return sum(1 for u in users.values() if u["role"] == "Administrator" and u["enabled"])
 
 
 async def _read_json(request):
@@ -443,7 +525,8 @@ def _make_session(state, username):
     token = secrets.token_hex(16)
     state._job_n += 1
     session_id = str(state._job_n)
-    state.sessions[token] = {"id": session_id, "username": username}
+    role = state.store.role(username) if state.store else "Administrator"
+    state.sessions[token] = {"id": session_id, "username": username, "role": role}
     uri = f"{ROOT}/SessionService/Sessions/{session_id}"
     body = _static_doc("session", uri)
     body["Id"] = session_id
@@ -464,11 +547,27 @@ async def _auth(request, handler):
         return await handler(request)
     if request.method == "POST" and path in (f"{ROOT}/SessionService/Sessions", f"{ROOT}/Sessions"):
         return await handler(request)
-    if request.headers.get("X-Auth-Token") in state.sessions:
-        return await handler(request)
-    if _basic_ok(request.headers.get("Authorization", "")):
-        return await handler(request)
+
+    token = request.headers.get("X-Auth-Token")
+    if token in state.sessions:
+        return await _authorize(request, handler, state.sessions[token]["role"])
+    creds = _basic_creds(request.headers.get("Authorization", ""))
+    if creds is not None and state.store is not None and state.store.authenticate(*creds):
+        return await _authorize(request, handler, state.store.role(creds[0]))
     return _unauthorized("Authentication required. Create a session via POST /redfish/v1/SessionService/Sessions.")
+
+
+async def _authorize(request, handler, role):
+    """Coarse RBAC: ReadOnly sees, Operator and up mutate, Administrator manages users."""
+    method = request.method
+    path = request.path.rstrip("/")
+    if method in ("POST", "PATCH", "DELETE"):
+        if path.startswith(ACCOUNTSERVICE) and not path.endswith("/AccountService.ChangePassword"):
+            if role != "Administrator":
+                return _forbidden("Account management requires the Administrator role.")
+        elif role == "ReadOnly":
+            return _forbidden("This operation requires Operator or Administrator privileges.")
+    return await handler(request)
 
 
 # --- HTTP handlers ----------------------------------------------------------
@@ -489,10 +588,46 @@ async def _post(_request):
 
     if path in (f"{ROOT}/SessionService/Sessions", f"{ROOT}/Sessions"):
         body = await _read_json(_request)
-        if body is None or body.get("UserName") != USERNAME or body.get("Password") != PASSWORD:
+        if body is None:
+            return _bad_request("Malformed JSON body.")
+        if not state.store.authenticate(body.get("UserName"), body.get("Password")):
             return _unauthorized("Authentication failed. Verify your credentials.")
         resource, token, location = _make_session(state, body.get("UserName"))
         return _json(resource, status=201, headers={"X-Auth-Token": token, "Location": location})
+
+    if path == ACCOUNTS_URI:
+        body = await _read_json(_request)
+        if body is None:
+            return _bad_request("Malformed JSON body.")
+        username = body.get("UserName")
+        password = body.get("Password")
+        role = body.get("RoleId") or "ReadOnly"
+        if not username or not password:
+            return _bad_request("UserName and Password are required.")
+        if role not in ROLES:
+            return _bad_request(f"RoleId must be one of {', '.join(ROLES)}.")
+        if username in state.store.users:
+            return _bad_request(f"User {username} already exists.")
+        state.store.set_user(username, password, role)
+        uri = f"{ACCOUNTS_URI}/{username}"
+        return _json(_m_account(uri, state), status=201, headers={"Location": uri})
+
+    if path == f"{ACCOUNTSERVICE}/Actions/AccountService.ChangePassword":
+        body = await _read_json(_request)
+        if body is None:
+            return _bad_request("Malformed JSON body.")
+        if not state.store.authenticate(body.get("UserName"), body.get("OldPassword")):
+            return _unauthorized("Old password is incorrect.")
+        new_password = body.get("NewPassword")
+        if not new_password:
+            return _bad_request("NewPassword is required.")
+        state.store.set_user(
+            body["UserName"],
+            new_password,
+            state.store.role(body["UserName"]),
+            state.store.users[body["UserName"]]["enabled"],
+        )
+        return web.Response(status=204)
 
     if path == f"{SYSTEM}/Actions/ComputerSystem.Reset":
         body = await _read_json(_request)
@@ -594,6 +729,30 @@ async def _patch(_request):
         state.boot_enabled = boot.get("BootSourceOverrideEnabled", state.boot_enabled)
         return web.Response(status=200)
 
+    if path.startswith(f"{ACCOUNTS_URI}/"):
+        username = path.rsplit("/", 1)[-1]
+        user = state.store.users.get(username)
+        if user is None:
+            return _not_found(path)
+        body = await _read_json(_request)
+        if body is None:
+            return _bad_request("Malformed JSON body.")
+        if "Password" in body:
+            if not body["Password"]:
+                return _bad_request("Password cannot be empty.")
+            user["password"] = body["Password"]
+        if "RoleId" in body:
+            if body["RoleId"] not in ROLES:
+                return _bad_request(f"RoleId must be one of {', '.join(ROLES)}.")
+            user["role"] = body["RoleId"]
+        if "Enabled" in body:
+            enabled = bool(body["Enabled"])
+            if not enabled and user["role"] == "Administrator" and _enabled_administrators(state) <= 1:
+                return _bad_request("Cannot disable the last enabled Administrator.")
+            user["enabled"] = enabled
+        state.store._save()
+        return web.Response(status=200)
+
     if path == f"{SYSTEM}/Bios/Settings":
         return web.Response(status=200)
     if path == f"{SYSTEM}/BootSources/Settings":
@@ -612,6 +771,15 @@ async def _delete(_request):
         if _delete_session(state, session_id):
             return web.Response(status=200)
         return _not_found(path)
+    if path.startswith(f"{ACCOUNTS_URI}/"):
+        username = path.rsplit("/", 1)[-1]
+        user = state.store.users.get(username)
+        if user is None:
+            return _not_found(path)
+        if user["role"] == "Administrator" and _enabled_administrators(state) <= 1:
+            return _bad_request("Cannot remove the last Administrator.")
+        state.store.delete_user(username)
+        return web.Response(status=200)
     if path.startswith(f"{MANAGER}/Jobs/"):
         job_id = path.rsplit("/", 1)[-1]
         if job_id == "JID_CLEARALL_FORCE":
@@ -622,9 +790,10 @@ async def _delete(_request):
     return _method_not_allowed(path, "DELETE")
 
 
-def create_app():
+def create_app(users_path=None):
     app = web.Application(middlewares=[_auth])
-    app[_STATE_KEY] = State()
+    store = _UserStore(users_path or USERS_PATH, USERNAME, PASSWORD)
+    app[_STATE_KEY] = State(store)
     app.router.add_get("/{path:.*}", _get)
     app.router.add_post("/{path:.*}", _post)
     app.router.add_patch("/{path:.*}", _patch)

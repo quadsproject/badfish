@@ -1,0 +1,10 @@
+{
+  "@odata.type": "#ManagerAccount.v1_5_0.ManagerAccount",
+  "Id": "",
+  "Name": "",
+  "UserName": "",
+  "RoleId": "",
+  "Enabled": false,
+  "Locked": false,
+  "Links": {}
+}
