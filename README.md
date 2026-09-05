@@ -719,7 +719,9 @@ badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --ls-jobs
 
 Default credentials are `quads` / `quads`, the same convention quads uses for its IPMI user. Set `BADFISH_EMULATOR_USER` and `BADFISH_EMULATOR_PASSWORD` to override. `--bind` and `--port` control the listen address.
 
-Currently covered: session/token auth, power state and reset, one-shot boot overrides, boot order reads, BIOS attributes and registry, the jobs queue (create/check/delete), virtual media mount/eject, firmware inventory, system/processor/memory/interface inventory, and SCP import/export targets. Screenshot and OS-deployment network ISO actions return "not supported" so badfish degrades gracefully.
+Accounts run through the Redfish AccountService: each user carries a role (`Administrator`, `Operator`, `ReadOnly`), users can be created, edited and removed over the API, passwords change via the `ChangePassword` action, and the last enabled Administrator cannot be deleted or disabled. Accounts live in a small JSON store created at runtime (default `/tmp/badfish_emulator_users.json`, `BADFISH_EMULATOR_USERS` to relocate). The emulator is a temporal testing fixture, not a persistent service: state is throwaway by default and dies with the box.
+
+Currently covered: session/token auth, user and account management with role-based authorization, power state and reset, one-shot boot overrides, boot order reads, BIOS attributes and registry, the jobs queue (create/check/delete), virtual media mount/eject, firmware inventory, system/processor/memory/interface inventory, and SCP import/export targets. Screenshot and OS-deployment network ISO actions return "not supported" so badfish degrades gracefully.
 
 > [!NOTE]
 > This is a development tool, not a security boundary. The bundled certificate and default credentials exist so CI and laptops can spin up a mock iDRAC with zero setup.

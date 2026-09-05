@@ -10,6 +10,7 @@ from badfish.main import badfish_factory
 
 _CERTS = Path(__file__).parent.parent / "src" / "badfish" / "emulator" / "certs"
 _ROOT = "/redfish/v1"
+ACCOUNTS = f"{_ROOT}/AccountService/Accounts"
 
 
 async def _client(app):
@@ -25,8 +26,8 @@ async def _login(client, user="quads", password="quads"):
 
 
 @pytest.fixture
-async def client():
-    app = emulator.create_app()
+async def client(tmp_path):
+    app = emulator.create_app(str(tmp_path / "users.json"))
     c = await _client(app)
     yield c
     await c.close()
@@ -159,7 +160,137 @@ async def test_not_found_and_tasks(client):
     assert task["Oem"]["Dell"]["PercentComplete"] == 100
 
 
-async def test_emulator_end_to_end(monkeypatch):
+async def test_account_service_and_quads_admin(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    svc = await (await client.get(f"{_ROOT}/AccountService", headers=headers)).json()
+    assert svc["Id"] == "AccountService"
+    assert svc["Accounts"]["@odata.id"] == ACCOUNTS
+    coll = await (await client.get(ACCOUNTS, headers=headers)).json()
+    assert [m["@odata.id"] for m in coll["Members"]] == [f"{ACCOUNTS}/quads"]
+    acct = await (await client.get(f"{ACCOUNTS}/quads", headers=headers)).json()
+    assert acct["RoleId"] == "Administrator"
+    assert acct["Enabled"] is True
+    # real iDRAC never returns Password on account GET
+    assert "Password" not in acct
+
+
+async def test_admin_creates_user_and_store_persists(tmp_path):
+    users_path = str(tmp_path / "users.json")
+    app = emulator.create_app(users_path)
+    c = await _client(app)
+    token = await _login(c)
+    resp = await c.post(
+        ACCOUNTS,
+        json={"UserName": "alice", "Password": "secret", "RoleId": "Operator"},
+        headers={"X-Auth-Token": token},
+    )
+    assert resp.status == 201
+    await c.close()
+
+    # a fresh emulator process against the same file still knows alice
+    app2 = emulator.create_app(users_path)
+    c2 = await _client(app2)
+    assert await _login(c2, "alice", "secret")
+    await c2.close()
+
+
+async def test_account_create_validation(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    dup = await client.post(
+        ACCOUNTS, json={"UserName": "quads", "Password": "x", "RoleId": "Administrator"}, headers=headers
+    )
+    assert dup.status == 400
+    badrole = await client.post(
+        ACCOUNTS, json={"UserName": "carol", "Password": "x", "RoleId": "Superuser"}, headers=headers
+    )
+    assert badrole.status == 400
+    nopass = await client.post(ACCOUNTS, json={"UserName": "carol", "RoleId": "Operator"}, headers=headers)
+    assert nopass.status == 400
+
+
+async def test_operator_mutates_but_cannot_manage_accounts(client):
+    token = await _login(client)
+    admin = {"X-Auth-Token": token}
+    assert (
+        await client.post(
+            ACCOUNTS, json={"UserName": "op", "Password": "opsecret", "RoleId": "Operator"}, headers=admin
+        )
+    ).status == 201
+    op = {"X-Auth-Token": await _login(client, "op", "opsecret")}
+
+    reset = await client.post(
+        f"{_ROOT}/Systems/System.Embedded.1/Actions/ComputerSystem.Reset", json={"ResetType": "On"}, headers=op
+    )
+    assert reset.status == 204
+
+    forbidden = await client.post(
+        ACCOUNTS, json={"UserName": "mallory", "Password": "x", "RoleId": "ReadOnly"}, headers=op
+    )
+    assert forbidden.status == 403
+    forbidden = await client.delete(f"{ACCOUNTS}/op", headers=op)
+    assert forbidden.status == 403
+
+
+async def test_readonly_has_no_mutation_rights(client):
+    token = await _login(client)
+    admin = {"X-Auth-Token": token}
+    assert (
+        await client.post(
+            ACCOUNTS, json={"UserName": "ro", "Password": "rosecret", "RoleId": "ReadOnly"}, headers=admin
+        )
+    ).status == 201
+    ro = {"X-Auth-Token": await _login(client, "ro", "rosecret")}
+
+    assert (await client.get(f"{_ROOT}/Systems", headers=ro)).status == 200
+    reset = await client.post(
+        f"{_ROOT}/Systems/System.Embedded.1/Actions/ComputerSystem.Reset", json={"ResetType": "On"}, headers=ro
+    )
+    assert reset.status == 403
+    boot = await client.patch(f"{_ROOT}/Systems/System.Embedded.1", json={"Boot": {}}, headers=ro)
+    assert boot.status == 403
+
+
+async def test_change_password_action(client):
+    token = await _login(client)
+    admin = {"X-Auth-Token": token}
+    assert (
+        await client.post(
+            ACCOUNTS, json={"UserName": "bob", "Password": "oldpass", "RoleId": "Operator"}, headers=admin
+        )
+    ).status == 201
+
+    resp = await client.post(
+        f"{_ROOT}/AccountService/Actions/AccountService.ChangePassword",
+        json={"UserName": "bob", "OldPassword": "oldpass", "NewPassword": "newpass"},
+        headers={"X-Auth-Token": await _login(client, "bob", "oldpass")},
+    )
+    assert resp.status == 204
+
+    wrong = await client.post(f"{_ROOT}/SessionService/Sessions", json={"UserName": "bob", "Password": "oldpass"})
+    assert wrong.status == 401
+    assert await _login(client, "bob", "newpass")
+
+
+async def test_account_patch_and_last_admin_guard(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+
+    patch = await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "ReadOnly"}, headers=headers)
+    assert patch.status == 200
+    acct = await (await client.get(f"{ACCOUNTS}/quads", headers=headers)).json()
+    assert acct["RoleId"] == "ReadOnly"
+
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "Administrator"}, headers=headers)).status == 200
+
+    disable = await client.patch(f"{ACCOUNTS}/quads", json={"Enabled": False}, headers=headers)
+    assert disable.status == 400
+    remove = await client.delete(f"{ACCOUNTS}/quads", headers=headers)
+    assert remove.status == 400
+
+
+async def test_emulator_end_to_end(monkeypatch, tmp_path):
     """Drive the real badfish client against a live HTTPS emulator."""
 
     async def _noop(*_args, **_kwargs):
@@ -167,7 +298,7 @@ async def test_emulator_end_to_end(monkeypatch):
 
     monkeypatch.setattr("badfish.main.asyncio.sleep", _noop)
 
-    app = emulator.create_app()
+    app = emulator.create_app(str(tmp_path / "users.json"))
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(str(_CERTS / "emulator.crt"), str(_CERTS / "emulator.key"))
     runner = web.AppRunner(app)
