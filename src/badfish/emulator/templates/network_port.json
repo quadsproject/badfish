@@ -1,0 +1,15 @@
+{
+  "@odata.type": "#NetworkPort.v1_2_0.NetworkPort",
+  "Id": "Port0",
+  "Name": "Port0",
+  "LinkStatus": "Up",
+  "SupportedLinkCapabilities": [
+    {
+      "LinkSpeedMbps": 25000
+    }
+  ],
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

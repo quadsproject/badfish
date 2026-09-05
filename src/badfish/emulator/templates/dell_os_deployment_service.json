@@ -1,0 +1,9 @@
+{
+  "@odata.type": "#DellOSDeploymentService.v1_0_0.DellOSDeploymentService",
+  "Id": "DellOSDeploymentService",
+  "Name": "Dell OS Deployment Service",
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "@odata.type": "#VirtualMedia.v1_3_0.VirtualMedia",
+  "Id": "CD",
+  "Name": "Virtual CD",
+  "ImageName": "",
+  "Image": "",
+  "Inserted": false,
+  "WriteProtected": true,
+  "MediaTypes": [
+    "CD"
+  ],
+  "Actions": {
+    "#VirtualMedia.InsertMedia": {
+      "target": "/redfish/v1/Managers/iDRAC.Embedded.1/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia"
+    },
+    "#VirtualMedia.EjectMedia": {
+      "target": "/redfish/v1/Managers/iDRAC.Embedded.1/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia"
+    }
+  }
+}

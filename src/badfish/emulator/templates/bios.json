@@ -1,0 +1,16 @@
+{
+  "@odata.type": "#Bios.v1_1_0.Bios",
+  "Id": "BIOS",
+  "Name": "BIOS",
+  "AttributeRegistry": "BiosAttributeRegistryUefi.v1_0_0",
+  "Attributes": {
+    "BootMode": "Bios",
+    "SriovGlobalEnable": "Disabled",
+    "OneTimeBootMode": "Disabled",
+    "OneTimeBootSeqDev": "",
+    "PxeDev1Interface": "NIC.Integrated.1-1-1",
+    "PxeDev1EnDis": "Enabled",
+    "PxeDev2Interface": "NIC.Integrated.1-2-1",
+    "PxeDev2EnDis": "Enabled"
+  }
+}

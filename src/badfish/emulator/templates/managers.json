@@ -1,0 +1,10 @@
+{
+  "@odata.type": "#ManagerCollection.ManagerCollection",
+  "Name": "Manager Collection",
+  "Members@odata.count": 1,
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/Managers/iDRAC.Embedded.1"
+    }
+  ]
+}

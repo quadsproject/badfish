@@ -1,0 +1,15 @@
+{
+  "@odata.type": "#Task.v1_4_3.Task",
+  "Id": "",
+  "Name": "Task",
+  "TaskState": "Completed",
+  "TaskStatus": "OK",
+  "PercentComplete": 100,
+  "Messages": [],
+  "Oem": {
+    "Dell": {
+      "PercentComplete": 100,
+      "JobState": "Completed"
+    }
+  }
+}

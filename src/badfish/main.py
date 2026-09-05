@@ -3175,6 +3175,11 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
 def main(argv=None):
     _args = parse_arguments(argv)
 
+    if _args.get("redfish_emulator"):
+        from badfish import emulator
+
+        return emulator.run_daemon(_args)
+
     log_level = DEBUG if _args["verbose"] else INFO
     host = _args["host"]
 

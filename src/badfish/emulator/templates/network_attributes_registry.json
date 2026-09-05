@@ -1,0 +1,50 @@
+{
+  "@odata.type": "#DellNetworkAttributesRegistry.v1_0_0.DellNetworkAttributesRegistry",
+  "RegistryEntries": {
+    "Attributes": [
+      {
+        "AttributeName": "WakeOnLan",
+        "Type": "Enumeration",
+        "Value": [
+          {
+            "ValueName": "Enabled"
+          },
+          {
+            "ValueName": "Disabled"
+          }
+        ],
+        "CurrentValue": "Disabled"
+      },
+      {
+        "AttributeName": "VirtualizationMode",
+        "Type": "Enumeration",
+        "Value": [
+          {
+            "ValueName": "NONE"
+          },
+          {
+            "ValueName": "SRIOV"
+          },
+          {
+            "ValueName": "NPARSRIOV"
+          }
+        ],
+        "CurrentValue": "NONE"
+      },
+      {
+        "AttributeName": "NumberVFAdvertised",
+        "Type": "Integer",
+        "LowerBound": 0,
+        "UpperBound": 128,
+        "CurrentValue": 0
+      },
+      {
+        "AttributeName": "DeviceName",
+        "Type": "String",
+        "MinLength": 0,
+        "MaxLength": 64,
+        "CurrentValue": "Intel(R) XXV710"
+      }
+    ]
+  }
+}

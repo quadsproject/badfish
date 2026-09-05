@@ -1,0 +1,12 @@
+{
+  "@odata.type": "#Job.v1_0_2.Job",
+  "Id": "",
+  "Name": "",
+  "Message": "",
+  "PercentComplete": 0,
+  "JobState": "New",
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

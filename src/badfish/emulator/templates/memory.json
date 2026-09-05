@@ -1,0 +1,13 @@
+{
+  "@odata.type": "#Memory.v1_10_0.Memory",
+  "Id": "",
+  "Name": "",
+  "CapacityMiB": 0,
+  "Manufacturer": "",
+  "MemoryDeviceType": "",
+  "OperatingSpeedMhz": 0,
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

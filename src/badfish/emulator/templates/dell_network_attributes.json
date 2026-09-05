@@ -1,0 +1,11 @@
+{
+  "@odata.type": "#DellNetworkAttributes.v1_0_0.DellNetworkAttributes",
+  "Id": "",
+  "Attributes": {
+    "VirtualizationMode": "NONE",
+    "WakeOnLan": "Disabled",
+    "NumberVFAdvertised": 0,
+    "DeviceName": "Intel(R) XXV710",
+    "FCoEOffloadMode": "Disabled"
+  }
+}

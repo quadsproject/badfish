@@ -1,0 +1,18 @@
+{
+  "@odata.type": "#Chassis.v1_10_0.Chassis",
+  "Id": "System.Embedded.1",
+  "Name": "Chassis",
+  "ChassisType": "RackMount",
+  "Model": "PowerEdge R740",
+  "SerialNumber": "EMUL8V1",
+  "PowerState": "Off",
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  },
+  "Links": {
+    "Power": {
+      "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power"
+    }
+  }
+}

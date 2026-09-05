@@ -1,0 +1,11 @@
+{
+  "@odata.type": "#NetworkAdapter.v1_4_0.NetworkAdapter",
+  "Id": "NIC.Integrated.1",
+  "Name": "NIC.Integrated.1",
+  "Manufacturer": "Intel",
+  "Model": "XXV710",
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "@odata.type": "#BiosAttributeRegistry.v1_2_0.BiosAttributeRegistry",
+  "Id": "BiosAttributeRegistryUefi",
+  "RegistryEntries": {
+    "Attributes": [
+      {
+        "AttributeName": "BootMode",
+        "Type": "Enumeration",
+        "Value": [
+          {
+            "ValueName": "Bios"
+          },
+          {
+            "ValueName": "Uefi"
+          }
+        ],
+        "CurrentValue": "Bios"
+      },
+      {
+        "AttributeName": "SriovGlobalEnable",
+        "Type": "Enumeration",
+        "Value": [
+          {
+            "ValueName": "Enabled"
+          },
+          {
+            "ValueName": "Disabled"
+          }
+        ],
+        "CurrentValue": "Disabled"
+      },
+      {
+        "AttributeName": "PxeDev1Interface",
+        "Type": "String",
+        "MinLength": 0,
+        "MaxLength": 64,
+        "CurrentValue": "NIC.Integrated.1-1-1"
+      },
+      {
+        "AttributeName": "PxeDev2Interface",
+        "Type": "String",
+        "MinLength": 0,
+        "MaxLength": 64,
+        "CurrentValue": "NIC.Integrated.1-2-1"
+      },
+      {
+        "AttributeName": "OneTimeBootMode",
+        "Type": "String",
+        "MinLength": 0,
+        "MaxLength": 64,
+        "CurrentValue": "Disabled"
+      }
+    ]
+  }
+}

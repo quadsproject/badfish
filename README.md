@@ -81,6 +81,7 @@
          * [Verbose Output](#verbose-output)
          * [Log to File](#log-to-file)
          * [Formatted output](#formatted-output)
+         * [Redfish emulator (mock iDRAC)](#redfish-emulator-mock-idrac)
       * [iDRAC and Data Format](#idrac-and-data-format)
          * [Dell Foreman and PXE Interface](#dell-foreman-and-pxe-interface)
          * [Host type overrides](#host-type-overrides)
@@ -697,6 +698,33 @@ If you would like to easier query some information listed by badfish, you can te
 ```bash
 badfish -H mgmt-your-server.example.com --output json/yaml --firmware-inventory
 ```
+
+### Redfish emulator (mock iDRAC)
+Badfish ships a built-in Redfish emulator that acts like a Dell-flavored iDRAC for development and testing, so most badfish commands can be exercised without bare metal.
+
+Run the emulator as a persistent server:
+
+```bash
+badfish --redfish-emulator --port 8443
+```
+
+It serves HTTPS on `127.0.0.1:8443` using a bundled self-signed test certificate. Point a second badfish instance at it like any BMC, and pass `--insecure` to skip certificate verification, the self-signed cert will not validate otherwise:
+
+```bash
+badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --power-state
+badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --ls-serial
+badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --firmware-inventory
+badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --ls-jobs
+```
+
+Default credentials are `quads` / `quads`, the same convention quads uses for its IPMI user. Set `BADFISH_EMULATOR_USER` and `BADFISH_EMULATOR_PASSWORD` to override. `--bind` and `--port` control the listen address.
+
+Currently covered: session/token auth, power state and reset, one-shot boot overrides, boot order reads, BIOS attributes and registry, the jobs queue (create/check/delete), virtual media mount/eject, firmware inventory, system/processor/memory/interface inventory, and SCP import/export targets. Screenshot and OS-deployment network ISO actions return "not supported" so badfish degrades gracefully.
+
+> [!NOTE]
+> This is a development tool, not a security boundary. The bundled certificate and default credentials exist so CI and laptops can spin up a mock iDRAC with zero setup.
+
+Resource templates live in `src/badfish/emulator/templates/` and are served by URI path, the same store that vendor mockup bundles (for example DMTF DSP2043) can feed as fetch support for Dell and SuperMicro trees lands.
 
 ## iDRAC and Data Format
 
