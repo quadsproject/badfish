@@ -1,0 +1,15 @@
+{
+  "@odata.type": "#Processor.v1_8_0.Processor",
+  "Id": "",
+  "Name": "Processor",
+  "Manufacturer": "",
+  "Model": "",
+  "InstructionSet": "x86-64",
+  "MaxSpeedMHz": 0,
+  "TotalCores": 0,
+  "TotalThreads": 0,
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

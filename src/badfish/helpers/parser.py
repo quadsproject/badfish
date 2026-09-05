@@ -321,6 +321,22 @@ def create_parser():
         help="Set a NIC attribute value",
         default="",
     )
+    parser.add_argument(
+        "--redfish-emulator",
+        help="Run the built-in Redfish emulator (mock iDRAC) as a persistent server instead of querying a host",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--bind",
+        help="(Redfish emulator) Address the emulator should bind to",
+        default="127.0.0.1",
+    )
+    parser.add_argument(
+        "--port",
+        help="(Redfish emulator) Port the emulator should listen on",
+        default=8443,
+        type=_positive_int,
+    )
     return parser
 
 

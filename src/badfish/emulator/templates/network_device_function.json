@@ -1,0 +1,16 @@
+{
+  "@odata.type": "#NetworkDeviceFunction.v1_3_0.NetworkDeviceFunction",
+  "Id": "NIC.Integrated.1-1-1",
+  "Name": "NIC.Integrated.1-1-1",
+  "NetDevFuncType": "Ethernet",
+  "Ethernet": {
+    "MACAddress": "00:5c:52:31:3a:9c"
+  },
+  "Oem": {
+    "Dell": {
+      "DellNIC": {
+        "VendorName": "Intel"
+      }
+    }
+  }
+}

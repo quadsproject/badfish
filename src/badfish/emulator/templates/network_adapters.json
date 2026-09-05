@@ -1,0 +1,10 @@
+{
+  "@odata.type": "#NetworkAdapterCollection.NetworkAdapterCollection",
+  "Name": "Network Adapter Collection",
+  "Members@odata.count": 1,
+  "Members": [
+    {
+      "@odata.id": "/redfish/v1/Systems/System.Embedded.1/NetworkAdapters/NIC.Integrated.1"
+    }
+  ]
+}

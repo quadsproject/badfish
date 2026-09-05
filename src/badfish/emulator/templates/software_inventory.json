@@ -1,0 +1,13 @@
+{
+  "@odata.type": "#SoftwareInventory.v1_2_0.SoftwareInventory",
+  "Id": "",
+  "Name": "",
+  "Version": "",
+  "Manufacturer": "",
+  "Description": "Firmware inventory entry",
+  "Oem": {},
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

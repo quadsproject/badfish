@@ -1,0 +1,13 @@
+{
+  "@odata.type": "#EthernetInterface.v1_5_0.EthernetInterface",
+  "Id": "",
+  "Name": "",
+  "MACAddress": "",
+  "SpeedMbps": 0,
+  "LinkStatus": "Up",
+  "IPv4Addresses": [],
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  }
+}

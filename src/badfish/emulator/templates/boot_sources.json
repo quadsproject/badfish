@@ -1,0 +1,40 @@
+{
+  "@odata.type": "#Registry.v1_3_0.Registry",
+  "Id": "BootSources",
+  "Attributes": {
+    "BootSeq": [
+      {
+        "Index": 0,
+        "Name": "NIC.Integrated.1-1-1",
+        "Enabled": true
+      },
+      {
+        "Index": 1,
+        "Name": "Optical.iDRACVirtual.1-1",
+        "Enabled": true
+      },
+      {
+        "Index": 2,
+        "Name": "Disk.SATAEmbedded.0-1",
+        "Enabled": true
+      }
+    ],
+    "UefiBootSeq": [
+      {
+        "Index": 0,
+        "Name": "NIC.Integrated.1-1-1",
+        "Enabled": true
+      },
+      {
+        "Index": 1,
+        "Name": "Optical.iDRACVirtual.1-1",
+        "Enabled": true
+      },
+      {
+        "Index": 2,
+        "Name": "Disk.SATAEmbedded.0-1",
+        "Enabled": true
+      }
+    ]
+  }
+}

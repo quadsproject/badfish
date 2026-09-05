@@ -1,0 +1,22 @@
+{
+  "@odata.type": "#Power.v1_5_0.Power",
+  "Id": "Power",
+  "PowerControl": [
+    {
+      "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power/PowerControl",
+      "Name": "Chassis Power Control",
+      "PowerConsumedWatts": 320,
+      "PowerCapacityWatts": 1600
+    }
+  ],
+  "PowerSupplies": [
+    {
+      "Name": "PSU.Slot.1",
+      "PowerOutputWatts": 800,
+      "Status": {
+        "State": "Enabled",
+        "Health": "OK"
+      }
+    }
+  ]
+}

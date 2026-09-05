@@ -1,0 +1,57 @@
+{
+  "@odata.type": "#ComputerSystem.v1_8_0.ComputerSystem",
+  "Id": "System.Embedded.1",
+  "Name": "System.Embedded.1",
+  "SystemType": "Physical",
+  "Boot": {
+    "BootSourceOverrideEnabled": "Disabled",
+    "BootSourceOverrideTarget": "None",
+    "BootSourceOverrideTarget@Redfish.AllowableValues": [
+      "None",
+      "Pxe",
+      "Cd",
+      "Usb",
+      "Hdd",
+      "BiosSetup",
+      "UefiTarget"
+    ]
+  },
+  "Actions": {
+    "#ComputerSystem.Reset": {
+      "target": "/redfish/v1/Systems/System.Embedded.1/Actions/ComputerSystem.Reset",
+      "ResetType@Redfish.AllowableValues": [
+        "On",
+        "ForceOff",
+        "GracefulShutdown",
+        "GracefulRestart",
+        "ForceRestart",
+        "PowerCycle",
+        "Nmi",
+        "ForceOn"
+      ]
+    }
+  },
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  },
+  "Links": {
+    "EthernetInterfaces": {
+      "@odata.id": "/redfish/v1/Systems/System.Embedded.1/EthernetInterfaces"
+    },
+    "Processors": {
+      "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Processors"
+    },
+    "Memory": {
+      "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Memory"
+    },
+    "Bios": {
+      "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Bios"
+    },
+    "Chassis": [
+      {
+        "@odata.id": "/redfish/v1/Chassis/System.Embedded.1"
+      }
+    ]
+  }
+}

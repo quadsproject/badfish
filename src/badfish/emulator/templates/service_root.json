@@ -1,0 +1,34 @@
+{
+  "@odata.type": "#ServiceRoot.v1_6_0.ServiceRoot",
+  "Id": "RootService",
+  "Name": "Root Service",
+  "RedfishVersion": "1.16.0",
+  "UUID": "27946b59-9e44-4fa7-8e91-f3527a1ef094",
+  "Systems": {
+    "@odata.id": "/redfish/v1/Systems"
+  },
+  "Managers": {
+    "@odata.id": "/redfish/v1/Managers"
+  },
+  "Chassis": {
+    "@odata.id": "/redfish/v1/Chassis"
+  },
+  "SessionService": {
+    "@odata.id": "/redfish/v1/SessionService"
+  },
+  "UpdateService": {
+    "@odata.id": "/redfish/v1/UpdateService"
+  },
+  "TaskService": {
+    "@odata.id": "/redfish/v1/TaskService"
+  },
+  "Registries": {
+    "@odata.id": "/redfish/v1/Registries"
+  },
+  "Oem": {
+    "Dell": {
+      "ServiceTag": "EMUL8V1",
+      "IsUsingRedfish": true
+    }
+  }
+}

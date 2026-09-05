@@ -1,0 +1,10 @@
+{
+  "@odata.type": "#DellJobService.v1_0_0.DellJobService",
+  "Id": "DellJobService",
+  "Name": "Dell Job Service",
+  "Actions": {
+    "#DellJobService.DeleteJobQueue": {
+      "target": "/redfish/v1/Dell/Managers/iDRAC.Embedded.1/DellJobService/Actions/DellJobService.DeleteJobQueue"
+    }
+  }
+}

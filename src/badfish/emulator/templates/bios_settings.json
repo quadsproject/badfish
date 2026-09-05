@@ -1,0 +1,6 @@
+{
+  "@odata.type": "#Bios.v1_1_0.Bios",
+  "Id": "BIOS.Settings",
+  "Name": "BIOS Settings Pending",
+  "Attributes": {}
+}

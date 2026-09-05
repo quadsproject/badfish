@@ -1,0 +1,55 @@
+{
+  "@odata.type": "#Manager.v1_9_0.Manager",
+  "Id": "iDRAC.Embedded.1",
+  "Name": "iDRAC",
+  "ManagerType": "BMC",
+  "FirmwareVersion": "6.00.00.00",
+  "Model": "iDRAC9",
+  "UUID": "4c4c4544-0046-3410-8043-b7c04f584c31",
+  "Status": {
+    "State": "Enabled",
+    "Health": "OK"
+  },
+  "Actions": {
+    "#Manager.Reset": {
+      "target": "/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Manager.Reset",
+      "ResetType@Redfish.AllowableValues": [
+        "GracefulRestart",
+        "ForceRestart"
+      ]
+    },
+    "Oem": {
+      "EID_674_Manager.ExportSystemConfiguration": {
+        "target": "/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Oem/EID_674_Manager.ExportSystemConfiguration",
+        "ShareParameters": {
+          "Target@Redfish.AllowableValues": [
+            "ALL",
+            "IDRAC",
+            "BIOS",
+            "NIC",
+            "RAID"
+          ]
+        }
+      },
+      "EID_674_Manager.ImportSystemConfiguration": {
+        "target": "/redfish/v1/Managers/iDRAC.Embedded.1/Actions/Oem/EID_674_Manager.ImportSystemConfiguration",
+        "ShareParameters": {
+          "Target@Redfish.AllowableValues": [
+            "ALL",
+            "IDRAC",
+            "BIOS",
+            "NIC"
+          ]
+        }
+      }
+    }
+  },
+  "Links": {
+    "Jobs": {
+      "@odata.id": "/redfish/v1/Managers/iDRAC.Embedded.1/Jobs"
+    },
+    "VirtualMedia": {
+      "@odata.id": "/redfish/v1/Managers/iDRAC.Embedded.1/VirtualMedia"
+    }
+  }
+}
