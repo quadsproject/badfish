@@ -10,7 +10,6 @@ from aiohttp.test_utils import TestClient, TestServer
 from badfish import emulator
 from badfish.main import badfish_factory
 
-_CERTS = Path(__file__).parent.parent / "src" / "badfish" / "emulator" / "certs"
 _ROOT = "/redfish/v1"
 ACCOUNTS = f"{_ROOT}/AccountService/Accounts"
 SYSTEM = f"{_ROOT}/Systems/System.Embedded.1"
@@ -306,8 +305,9 @@ async def test_emulator_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr("badfish.main.asyncio.sleep", _noop)
 
     app = emulator.create_app(str(tmp_path / "users.json"))
+    crt, key = emulator._ensure_certs(str(tmp_path / "certs"))
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(str(_CERTS / "emulator.crt"), str(_CERTS / "emulator.key"))
+    ctx.load_cert_chain(crt, key)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "127.0.0.1", 0, ssl_context=ctx)
@@ -560,8 +560,52 @@ async def test_store_corrupt_file_recovers(tmp_path):
     await c.close()
 
 
+def test_default_cert_dir(monkeypatch):
+    monkeypatch.delenv("BADFISH_EMULATOR_CERTS", raising=False)
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    assert emulator._default_cert_dir() == Path.home() / ".cache" / "badfish" / "emulator"
+    monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/xdg")
+    assert emulator._default_cert_dir() == Path("/tmp/xdg") / "badfish" / "emulator"
+    monkeypatch.setenv("BADFISH_EMULATOR_CERTS", "/tmp/override")
+    assert emulator._default_cert_dir() == Path("/tmp/override")
+
+
+def test_ensure_certs_generates_keypair(tmp_path):
+    crt, key = emulator._ensure_certs(str(tmp_path))
+    crt_p, key_p = Path(crt), Path(key)
+    assert crt_p.exists() and key_p.exists()
+    assert (crt_p.stat().st_mode & 0o777) == 0o644  # cert is public
+    assert (key_p.stat().st_mode & 0o777) == 0o600  # key is private
+    assert "BEGIN CERTIFICATE" in crt_p.read_text()
+    assert "PRIVATE KEY" in key_p.read_text()
+
+
+def test_ensure_certs_reuses_existing(tmp_path, monkeypatch):
+    crt_p = tmp_path / "emulator.crt"
+    key_p = tmp_path / "emulator.key"
+    crt_p.write_text("BEGIN CERTIFICATE placeholder")
+    key_p.write_text("BEGIN PRIVATE KEY placeholder")
+
+    def _should_not_call(*_a, **_k):
+        raise AssertionError("openssl must not run when certs already exist")
+
+    monkeypatch.setattr("badfish.emulator.subprocess.run", _should_not_call)
+    crt, key = emulator._ensure_certs(str(tmp_path))
+    assert crt == str(crt_p) and key == str(key_p)
+
+
+def test_ensure_certs_missing_openssl(tmp_path, monkeypatch):
+    def _no_openssl(*_a, **_k):
+        raise FileNotFoundError("openssl")
+
+    monkeypatch.setattr("badfish.emulator.subprocess.run", _no_openssl)
+    with pytest.raises(RuntimeError, match="openssl not found"):
+        emulator._ensure_certs(str(tmp_path))
+
+
 async def test_run_daemon_serves_live(monkeypatch, tmp_path):
     monkeypatch.setenv("BADFISH_EMULATOR_USERS", str(tmp_path / "users.json"))
+    monkeypatch.setenv("BADFISH_EMULATOR_CERTS", str(tmp_path / "certs"))
     captured = {}
 
     async def _fake_run_app(app, host="127.0.0.1", port=8443, ssl_context=None, **kwargs):
