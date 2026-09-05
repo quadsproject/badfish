@@ -119,3 +119,6 @@ exports/
 
 CLAUDE.md
 .claude/
+# Runtime-generated emulator TLS keypair (see certs/README.md)
+src/badfish/emulator/certs/emulator.crt
+src/badfish/emulator/certs/emulator.key

@@ -22,6 +22,7 @@ import json
 import os
 import secrets
 import ssl
+import subprocess
 from pathlib import Path
 
 from aiohttp import web
@@ -30,7 +31,6 @@ ROOT = "/redfish/v1"
 
 _BASE = Path(__file__).parent
 _TEMPLATES = _BASE / "emulator" / "templates"
-_CERTS = _BASE / "emulator" / "certs"
 
 # Default credentials are intentionally generic (quads/quads mirrors the
 # quads project's IPMI user convention). Override per run with env vars.
@@ -800,10 +800,68 @@ def create_app(users_path=None):
     return app
 
 
+_CERT_STORE_ENV = "BADFISH_EMULATOR_CERTS"
+
+
+def _default_cert_dir() -> Path:
+    """Per-user writable directory for the emulator TLS keypair.
+
+    Never inside the package: no private key is shipped with badfish.
+    Overridable with BADFISH_EMULATOR_CERTS, else $XDG_CACHE_HOME/badfish/emulator.
+    """
+    env = os.environ.get(_CERT_STORE_ENV)
+    if env:
+        return Path(env)
+    cache = os.environ.get("XDG_CACHE_HOME", str(Path.home() / ".cache"))
+    return Path(cache) / "badfish" / "emulator"
+
+
+def _ensure_certs(certs_dir=None) -> tuple[str, str]:
+    """Return (crt, key) paths for the emulator HTTPS listener.
+
+    Generates a fresh self-signed localhost keypair on first run instead of
+    shipping a private key in SCM/binary artifacts. Reuses existing files and
+    applies 0600 perms to the key.
+    """
+    certs_dir = Path(certs_dir) if certs_dir else _default_cert_dir()
+    certs_dir.mkdir(parents=True, exist_ok=True)
+    crt = certs_dir / "emulator.crt"
+    key = certs_dir / "emulator.key"
+    if crt.exists() and key.exists():
+        return str(crt), str(key)
+    cmd = [
+        "openssl",
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        str(key),
+        "-out",
+        str(crt),
+        "-days",
+        "365",
+        "-nodes",
+        "-subj",
+        "/CN=localhost",
+        "-addext",
+        "subjectAltName=DNS:localhost,IP:127.0.0.1",
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except FileNotFoundError as err:  # pragma: no cover - depends on env
+        raise RuntimeError(
+            "openssl not found: install openssl, or pre-provision " f"emulator.crt/emulator.key in {certs_dir}"
+        ) from err
+    key.chmod(0o600)
+    return str(crt), str(key)
+
+
 def run_daemon(args):
     app = create_app()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(str(_CERTS / "emulator.crt"), str(_CERTS / "emulator.key"))
+    crt, key = _ensure_certs()
+    context.load_cert_chain(crt, key)
     host = args.get("bind") or "127.0.0.1"
     port = int(args.get("port") or 8443)
     return web.run_app(app, host=host, port=port, ssl_context=context)

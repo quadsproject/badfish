@@ -708,7 +708,7 @@ Run the emulator as a persistent server:
 badfish --redfish-emulator --port 8443
 ```
 
-It serves HTTPS on `127.0.0.1:8443` using a bundled self-signed test certificate. Point a second badfish instance at it like any BMC, and pass `--insecure` to skip certificate verification, the self-signed cert will not validate otherwise:
+It serves HTTPS on `127.0.0.1:8443` using a self-signed certificate generated on first run (never committed to the repo or shipped in the wheel/RPM; see `src/badfish/emulator/certs/README.md`). Point a second badfish instance at it like any BMC, and pass `--insecure` to skip certificate verification, the self-signed cert will not validate otherwise:
 
 ```bash
 badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --power-state
@@ -724,7 +724,7 @@ Accounts run through the Redfish AccountService: each user carries a role (`Admi
 Currently covered: session/token auth, user and account management with role-based authorization, power state and reset, one-shot boot overrides, boot order reads, BIOS attributes and registry, the jobs queue (create/check/delete), virtual media mount/eject, firmware inventory, system/processor/memory/interface inventory, and SCP import/export targets. Screenshot and OS-deployment network ISO actions return "not supported" so badfish degrades gracefully.
 
 > [!NOTE]
-> This is a development tool, not a security boundary. The bundled certificate and default credentials exist so CI and laptops can spin up a mock iDRAC with zero setup.
+> This is a development tool, not a security boundary. The certificate (generated at runtime, unique per install) and default credentials exist so CI and laptops can spin up a mock iDRAC with zero setup.
 
 Resource templates live in `src/badfish/emulator/templates/` and are served by URI path, the same store that vendor mockup bundles (for example DMTF DSP2043) can feed as fetch support for Dell and SuperMicro trees lands.
 
