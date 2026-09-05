@@ -35,8 +35,9 @@ srpm: all
 	     -bs *.spec
 
 clean:
-	rm -rf *.src.rpm *.tar.gz *.spec noarch
+	rm -rf *.src.rpm *.tar.gz *.spec noarch rpmbuild
 
+.PHONY: rpmlint
 rpmlint: tarball badfish.spec
 	rm -rf $(CURDIR)/rpmbuild
 	mkdir -p $(CURDIR)/rpmbuild/SOURCES $(CURDIR)/rpmbuild/SPECS

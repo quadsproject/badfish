@@ -4,3 +4,4 @@
 noarch/
 usr/
 badfish.spec/
+rpmbuild/

@@ -2,7 +2,7 @@ name: RPM Lint
 
 on:
   pull_request:
-    types: [opened, edited]
+    types: [opened, synchronize, reopened]
     branches: [development, master]
 
   push:
@@ -13,6 +13,8 @@ jobs:
     name: Run rpmlint
     runs-on: ubuntu-latest
     container: fedora:latest
+    permissions:
+      contents: read
 
     steps:
       - name: Install Git
@@ -23,7 +25,7 @@ jobs:
 
       - name: Install rpmlint and build dependencies
         run: |
-          dnf -y install make rpmlint python3-devel pyproject-rpm-macros \
+          dnf -y install make rpmlint rpm-build python3-devel pyproject-rpm-macros \
             python3-setuptools python3-wheel python3-pip python3-build \
             python3-pyyaml python3-aiohttp python3-async-lru python3-rich \
             python3-pytest python3-pytest-asyncio glibc-langpack-en
