@@ -289,6 +289,22 @@ class Badfish:
 
     async def set_bios_attribute(self, attributes):
         data = await self.get_bios_attributes_registry()
+        # Resolve user-supplied attribute names to the registry's canonical
+        # AttributeName up front, so oddly-cased NAME=value pairs (e.g.
+        # bootmode=Uefi) read current values and PATCH with the BMC's exact
+        # attribute naming instead of failing with a misleading
+        # "attribute not found".
+        canonical_map = {}
+        for entry in data["RegistryEntries"]["Attributes"]:
+            entries = [low_entry.lower() for low_entry in entry.values() if isinstance(low_entry, str)]
+            for attribute in list(attributes):
+                if attribute.lower() in entries and attribute not in canonical_map:
+                    canonical_map[attribute] = entry.get("AttributeName") or attribute
+        for attribute in list(attributes):
+            canonical = canonical_map.get(attribute)
+            if canonical and canonical != attribute:
+                attributes[canonical] = attributes.pop(attribute)
+
         for entry in data["RegistryEntries"]["Attributes"]:
             entries = [low_entry.lower() for low_entry in entry.values() if isinstance(low_entry, str)]
             _warnings = []
@@ -302,12 +318,10 @@ class Badfish:
                             accepted_values = [value["ValueName"] for value in values[1]]
                             for accepted_value in accepted_values:
                                 if value.lower() == accepted_value.lower():
-                                    value = accepted_value
                                     attributes[attribute] = accepted_value
                                     accepted = True
                             if not accepted:
                                 _warnings.append(f"List of accepted values for '{attribute}': {accepted_values}")
-
                 attribute_value = await self.get_bios_attribute(attribute)
                 if attribute_value:
                     if value.lower() == attribute_value.lower():
@@ -326,6 +340,10 @@ class Badfish:
             if _remove:
                 for attribute in _remove:
                     attributes.pop(attribute)
+
+        if not attributes:
+            self.logger.info("All attributes are already in the desired state; skipping PATCH and reboot.")
+            return
 
         _payload = {"Attributes": attributes}
 
@@ -2987,6 +3005,25 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
     badfish = None
 
     try:
+        # Parse and validate --attribute-value pairs before any session or
+        # network work: syntax errors fail fast with zero BMC round-trips, and
+        # duplicate names / mixed flags are rejected instead of silently
+        # applying a partial set.
+        bios_attributes = {}
+        if attribute_value:
+            if not set_bios_attribute:
+                raise BadfishException("--attribute-value requires --set-bios-attribute")
+            if attribute or value:
+                raise BadfishException("Use either --attribute/--value or --attribute-value, not both")
+            for pair in attribute_value:
+                name, _sep, attr_value = pair.partition("=")
+                if not _sep or not name.strip() or not attr_value.strip():
+                    raise BadfishException(f"Invalid attribute/value pair supplied: {pair}")
+                name = name.strip()
+                if name in bios_attributes:
+                    raise BadfishException(f"Duplicate BIOS attribute supplied: {name}")
+                bios_attributes[name] = attr_value.strip()
+
         badfish = await badfish_factory(
             _host=_host,
             _username=_username,
@@ -3085,15 +3122,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
                 for attribute, value in data["Attributes"].items():
                     logger.info(f"{attribute}: {value}")
         elif set_bios_attribute:
-            attributes = {}
-            if attribute_value:
-                for pair in attribute_value:
-                    name, sep, attr_value = pair.partition("=")
-                    if not sep or not name.strip() or not attr_value.strip():
-                        raise BadfishException(f"Invalid attribute/value pair supplied: {pair}")
-                    attributes[name.strip()] = attr_value.strip()
-            else:
-                attributes = {attribute: value}
+            attributes = bios_attributes if attribute_value else {attribute: value}
             await badfish.set_bios_attribute(attributes)
         elif set_bios_password:
             await badfish.set_bios_password(old_password, new_password)

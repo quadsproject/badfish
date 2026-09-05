@@ -233,7 +233,7 @@ def create_parser():
         "--attribute-value",
         help="BIOS attribute/value pair, e.g. ProcC1E=Enabled. May be repeated to set multiple BIOS attributes in one call.",
         action="append",
-        default=[],
+        default=None,
     )
     parser.add_argument(
         "--set-bios-password",
