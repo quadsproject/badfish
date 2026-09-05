@@ -4,9 +4,27 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [development, master]
+    paths:
+      - 'src/**'
+      - 'rpm/**'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'requirements.txt'
+      - '.github/workflows/rpmlint.yml'
 
   push:
     branches: [development, master]
+    paths:
+      - 'src/**'
+      - 'rpm/**'
+      - 'pyproject.toml'
+      - 'setup.cfg'
+      - 'requirements.txt'
+      - '.github/workflows/rpmlint.yml'
+
+concurrency:
+  group: rpmlint-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   rpmlint:
