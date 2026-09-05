@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Badfish Redfish emulator: a mock iDRAC served over HTTP(S).
 
 Architecture is inspired by the sushy-tools emulator (OpenStack project,
@@ -225,11 +224,10 @@ _STATIC_URI = {
     f"{SYSTEM}/BootSources": "boot_sources",
     f"{SYSTEM}/NetworkAdapters": "network_adapters",
     f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1": "network_adapter",
-    f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts": "network_ports",
     f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts/Port0": "network_port",
-    f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions": "network_device_functions",
     f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions/NIC.Integrated.1-1-1": "network_device_function",
     f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions/NIC.Integrated.1-1-1/Oem/Dell/DellNetworkAttributes/NIC.Integrated.1-1-1": "dell_network_attributes",
+    f"{CHASSIS}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions/NIC.Integrated.1-1-1/Oem/Dell/DellNetworkAttributes/NIC.Integrated.1-1-1": "dell_network_attributes",
     f"{ROOT}/Managers": "managers",
     MANAGER: "manager",
     f"{CHASSIS}": "chassis",
@@ -248,7 +246,11 @@ def _collection_uri(uri, state):
     if uri == f"{SYSTEM}/Memory":
         return _collection("Memory", uri, [d["id"] for d in SYSCONF["dimms"]])
     if uri == FIRMWARE:
-        return _collection("SoftwareInventory", uri, [f"{f['id']}-{f['id']}-Installed" for f in SYSCONF["firmware"]])
+        return _collection("SoftwareInventory", uri, [f"{f['id']}-Installed" for f in SYSCONF["firmware"]])
+    if uri == f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts":
+        return _collection("NetworkPort", uri, [n["id"] for n in SYSCONF["nics"]])
+    if uri == f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions":
+        return _collection("NetworkDeviceFunction", uri, [n["id"] for n in SYSCONF["nics"]])
     if uri == f"{MANAGER}/Jobs":
         return _collection("Job", uri, list(state.jobs.keys()))
     if uri == f"{ROOT}/SessionService/Sessions":
@@ -344,7 +346,7 @@ def _m_job(uri, state):
 
 def _m_session(uri, state):
     session_id = uri.rsplit("/", 1)[-1]
-    for token, info in state.sessions.items():
+    for info in state.sessions.values():
         if str(info["id"]) == session_id:
             data = _tmpl("session")
             data["@odata.id"] = uri
@@ -359,6 +361,13 @@ def _m_vmedia(uri, state):
     data["@odata.id"] = uri
     data["ImageName"] = state.vmedia_image or ""
     data["Inserted"] = bool(state.vmedia_image)
+    return data
+
+
+def _m_port(uri, state):
+    data = _tmpl("network_port")
+    data["@odata.id"] = uri
+    data["Id"] = uri.rsplit("/", 1)[-1]
     return data
 
 
@@ -393,6 +402,7 @@ _MEMBER_PREFIXES = (
     (f"{SYSTEM}/Processors/", _m_processor),
     (f"{SYSTEM}/Memory/", _m_dimm),
     (f"{FIRMWARE}/", _m_firmware),
+    (f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts/", _m_port),
     (f"{MANAGER}/Jobs/", _m_job),
     (f"{ROOT}/SessionService/Sessions/", _m_session),
     (f"{ACCOUNTS_URI}/", _m_account),
@@ -549,7 +559,10 @@ async def _auth(request, handler):
 
     token = request.headers.get("X-Auth-Token")
     if token in state.sessions:
-        return await _authorize(request, handler, state.sessions[token]["role"])
+        # Resolve role live from the store: RBAC reflects demotions/promotions
+        # applied after the session was created instead of a login-time snapshot.
+        role = state.store.role(state.sessions[token]["username"]) if state.store else state.sessions[token]["role"]
+        return await _authorize(request, handler, role)
     creds = _basic_creds(request.headers.get("Authorization", ""))
     if creds is not None and state.store is not None and state.store.authenticate(*creds):
         return await _authorize(request, handler, state.store.role(creds[0]))
@@ -633,6 +646,9 @@ async def _post(_request):
         if body is None:
             return _bad_request("Malformed JSON body.")
         reset_type = body.get("ResetType")
+        # A later reset supersedes any pending automatic power-on task.
+        if state._restart_task is not None:
+            state._restart_task.cancel()
         if reset_type in _RESTART_TYPES:
             state.power = "Off"
 
@@ -698,12 +714,14 @@ async def _post(_request):
         f"{ROOT}/Dell/Systems/{SYSCONF['system_id']}/DellOSDeploymentService/"
         "Actions/DellOSDeploymentService.DetachISOImage"
     ):
-        return web.Response(status=204)
+        # Real iDRAC answers 200 with a JSON body, not 204; badfish's
+        # detach_remote_image only accepts 200.
+        return web.Response(status=200)
 
     if path.endswith("/Actions/Oem/EID_674_Manager.ExportSystemConfiguration"):
         state._job_n += 1
         job_id = f"JID_{state._job_n:016d}"
-        state.jobs[job_id] = {"Export": True}
+        state.jobs[job_id] = {"Export": True, "SystemConfiguration": {"ComponentResults": [], "Id": "SystemConfiguration"}}
         return web.Response(status=202, headers={"Location": f"{MANAGER}/Jobs/{job_id}"})
     if path.endswith("/Actions/Oem/EID_674_Manager.ImportSystemConfiguration"):
         state._job_n += 1
@@ -743,6 +761,13 @@ async def _patch(_request):
         if "RoleId" in body:
             if body["RoleId"] not in ROLES:
                 return _bad_request(f"RoleId must be one of {', '.join(ROLES)}.")
+            if (
+                body["RoleId"] != user["role"]
+                and user["role"] == "Administrator"
+                and user["enabled"]
+                and _enabled_administrators(state) <= 1
+            ):
+                return _bad_request("Cannot demote the last enabled Administrator.")
             user["role"] = body["RoleId"]
         if "Enabled" in body:
             enabled = bool(body["Enabled"])
@@ -828,6 +853,11 @@ def _ensure_certs(certs_dir=None) -> tuple[str, str]:
     crt = certs_dir / "emulator.crt"
     key = certs_dir / "emulator.key"
     if crt.exists() and key.exists():
+        try:
+            key.chmod(0o600)
+            crt.chmod(0o600)
+        except OSError:  # pragma: no cover - non-POSIX or read-only fs
+            pass
         return str(crt), str(key)
     cmd = [
         "openssl",

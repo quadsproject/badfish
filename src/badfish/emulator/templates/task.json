@@ -8,6 +8,7 @@
   "Messages": [],
   "Oem": {
     "Dell": {
+      "Message": "RAC0580: Job is in progress or completed.",
       "PercentComplete": 100,
       "JobState": "Completed"
     }

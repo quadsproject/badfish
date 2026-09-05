@@ -283,17 +283,28 @@ async def test_account_patch_and_last_admin_guard(client):
     token = await _login(client)
     headers = {"X-Auth-Token": token}
 
-    patch = await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "ReadOnly"}, headers=headers)
-    assert patch.status == 200
+    # quads is the only enabled Administrator: demoting, disabling, or deleting
+    # it must all be rejected.
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "ReadOnly"}, headers=headers)).status == 400
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"Enabled": False}, headers=headers)).status == 400
+    assert (await client.delete(f"{ACCOUNTS}/quads", headers=headers)).status == 400
+
+    # With a second enabled Administrator present, the same demotion succeeds.
+    assert (
+        await client.post(ACCOUNTS, json={"UserName": "admin2", "Password": "pw", "RoleId": "Administrator"}, headers=headers)
+    ).status == 201
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "ReadOnly"}, headers=headers)).status == 200
     acct = await (await client.get(f"{ACCOUNTS}/quads", headers=headers)).json()
     assert acct["RoleId"] == "ReadOnly"
 
-    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "Administrator"}, headers=headers)).status == 200
+    # The demoted quads session loses account-management rights immediately;
+    # admin2 (still Administrator) restores it.
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "Administrator"}, headers=headers)).status == 403
+    admin2 = {"X-Auth-Token": await _login(client, "admin2", "pw")}
+    assert (await client.patch(f"{ACCOUNTS}/quads", json={"RoleId": "Administrator"}, headers=admin2)).status == 200
 
-    disable = await client.patch(f"{ACCOUNTS}/quads", json={"Enabled": False}, headers=headers)
-    assert disable.status == 400
-    remove = await client.delete(f"{ACCOUNTS}/quads", headers=headers)
-    assert remove.status == 400
+    # A non-last Administrator can still be disabled.
+    assert (await client.patch(f"{ACCOUNTS}/admin2", json={"Enabled": False}, headers=admin2)).status == 200
 
 
 async def test_emulator_end_to_end(monkeypatch, tmp_path):
@@ -332,6 +343,14 @@ async def test_emulator_end_to_end(monkeypatch, tmp_path):
         assert bf.boot_devices is not None
         assert bf.boot_devices[0]["Name"] == "NIC.Integrated.1-1-1"
 
+        # Network adapter inventory and NIC attributes: the flows that used to
+        # 500 because NetworkPorts/NDF collections and the Chassis tree were
+        # missing (get_nic_fqdds / get_nic_attribute).
+        assert await bf.get_network_adapters()
+        assert await bf.get_nic_fqdds()
+        assert await bf.get_nic_attribute("NIC.Integrated.1-1-1")
+        assert await bf.detach_remote_image()
+
         job_id = await bf.create_bios_config_job(bf.bios_uri)
         assert job_id and job_id.startswith("JID_")
         assert (await bf.check_schedule_job_status(job_id)) is None
@@ -341,6 +360,9 @@ async def test_emulator_end_to_end(monkeypatch, tmp_path):
         assert await bf.mount_virtual_media("/tmp/fake.iso")
         assert await bf.check_virtual_media()
         assert await bf.unmount_virtual_media()
+
+        # SCP export: waits on the job until SystemConfiguration appears.
+        assert await bf.export_scp(str(tmp_path))
 
         await bf.get_power_consumed_watts()
         assert await bf.get_bios_boot_mode() == "Bios"
@@ -367,6 +389,35 @@ async def test_inventory_collections_and_members(client):
     nic = await (await client.get(f"{SYSTEM}/EthernetInterfaces/NIC.Integrated.1-1-1", headers=headers)).json()
     assert nic["MACAddress"] == "00:5c:52:31:3a:9c"
     assert nic["LinkStatus"] == "Up"
+
+    # Network adapter inventory the way badfish walks it: the NetworkPorts and
+    # NetworkDeviceFunctions collections under each adapter (get_nic_fqdds) and
+    # NIC attributes served from the Chassis tree (get/set_nic_attribute).
+    na = await (await client.get(f"{SYSTEM}/NetworkAdapters", headers=headers)).json()
+    assert [m["@odata.id"] for m in na["Members"]] == [f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1"]
+    ports = await (await client.get(f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts", headers=headers)).json()
+    assert ports["Members@odata.count"] == 2
+    assert (await client.get(f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts/Port0", headers=headers)).status == 200
+    ndf = await (
+        await client.get(f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions", headers=headers)
+    ).json()
+    assert ndf["Members@odata.count"] == 2
+    dnn = await (
+        await client.get(
+            f"{CHASSIS}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions/NIC.Integrated.1-1-1/"
+            "Oem/Dell/DellNetworkAttributes/NIC.Integrated.1-1-1",
+            headers=headers,
+        )
+    ).json()
+    assert dnn["Attributes"]
+    assert (
+        await client.patch(
+            f"{CHASSIS}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions/NIC.Integrated.1-1-1/"
+            "Oem/Dell/DellNetworkAttributes/NIC.Integrated.1-1-1/Settings",
+            json={"Attributes": {"WakeOnLan": "Enabled"}},
+            headers=headers,
+        )
+    ).status == 204
 
     procs = await (await client.get(f"{SYSTEM}/Processors", headers=headers)).json()
     assert procs["Members@odata.count"] == 2
@@ -469,6 +520,22 @@ async def test_account_delete(client):
     assert (await client.delete(f"{ACCOUNTS}/dave", headers=headers)).status == 404
 
 
+async def test_rbac_role_reevaluated_on_existing_session(client):
+    """Demoting a user takes effect on their already-issued session token."""
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    assert (
+        await client.post(ACCOUNTS, json={"UserName": "op", "Password": "oppw", "RoleId": "Operator"}, headers=headers)
+    ).status == 201
+    op = {"X-Auth-Token": await _login(client, "op", "oppw")}
+    assert (
+        await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "On"}, headers=op)
+    ).status == 204
+    assert (await client.patch(f"{ACCOUNTS}/op", json={"RoleId": "ReadOnly"}, headers=headers)).status == 200
+    kicked = await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "On"}, headers=op)
+    assert kicked.status == 403
+
+
 async def test_reset_variants_and_bios_actions(client):
     token = await _login(client)
     headers = {"X-Auth-Token": token}
@@ -479,6 +546,17 @@ async def test_reset_variants_and_bios_actions(client):
     await asyncio.sleep(2.2)  # restart task flips power back on
     body = await (await client.get(SYSTEM, headers=headers)).json()
     assert body["PowerState"] == "On"
+
+    # A later reset cancels the pending automatic power-on task.
+    assert (
+        await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "GracefulRestart"}, headers=headers)
+    ).status == 204
+    assert (
+        await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "ForceOff"}, headers=headers)
+    ).status == 204
+    await asyncio.sleep(2.2)
+    body = await (await client.get(SYSTEM, headers=headers)).json()
+    assert body["PowerState"] == "Off"
 
     assert (
         await client.post(f"{SYSTEM}/Actions/ComputerSystem.Reset", json={"ResetType": "NukeIt"}, headers=headers)
@@ -507,16 +585,20 @@ async def test_oem_actions(client):
     boot = await client.post(f"{dellsvc}/Actions/DellOSDeploymentService.BootToNetworkISO", json={}, headers=headers)
     assert boot.status == 202
     detach = await client.post(f"{dellsvc}/Actions/DellOSDeploymentService.DetachISOImage", json={}, headers=headers)
-    assert detach.status == 204
+    assert detach.status == 200  # real iDRAC answers 200, and badfish only accepts 200
 
     exp = await client.post(
         f"{MANAGER}/Actions/Oem/EID_674_Manager.ExportSystemConfiguration", json={}, headers=headers
     )
     assert exp.status == 202 and exp.headers["Location"].startswith(f"{MANAGER}/Jobs/")
+    exp_job = await (await client.get(exp.headers["Location"], headers=headers)).json()
+    assert "SystemConfiguration" in exp_job  # what badfish.export_scp waits for
     imp = await client.post(
         f"{MANAGER}/Actions/Oem/EID_674_Manager.ImportSystemConfiguration", json={}, headers=headers
     )
     assert imp.status == 202 and imp.headers["Location"].startswith(f"{_ROOT}/TaskService/Tasks/")
+    imp_task = await (await client.get(imp.headers["Location"], headers=headers)).json()
+    assert imp_task["Oem"]["Dell"]["Message"]  # badfish.import_scp reads this on every poll
 
     shot = await client.post(f"{MANAGER}/Actions/Oem/DellLCService.ExportServerScreenShot", json={}, headers=headers)
     assert shot.status == 404
@@ -617,9 +699,10 @@ async def test_run_daemon_serves_live(monkeypatch, tmp_path):
         port = runner.addresses[0][1]
         from aiohttp import ClientSession
 
-        async with ClientSession() as sess:
-            async with sess.get(f"https://127.0.0.1:{port}/redfish/v1", ssl=False) as resp:
-                assert resp.status == 200
+        async with ClientSession() as sess, sess.get(
+            f"https://127.0.0.1:{port}/redfish/v1", ssl=False
+        ) as resp:
+            assert resp.status == 200
         await runner.cleanup()
 
     monkeypatch.setattr("badfish.emulator.web.run_app", _fake_run_app)
