@@ -206,6 +206,49 @@ class TestSetBiosAttribute(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.patch")
     @patch("aiohttp.ClientSession.get")
+    def test_set_bios_attribute_multi_duplicate_case_insensitive(self, mock_get, mock_patch, mock_post, mock_delete):
+        responses = INIT_RESP
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_patch, 200, ["OK"])
+        self.set_mock_response(mock_post, 200, ["OK", JOB_OK_RESP])
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = [
+            self.option_arg,
+            "--attribute-value",
+            f"{ATTRIBUTE_OK}={ATTR_VALUE_OK}",
+            "--attribute-value",
+            f"{ATTRIBUTE_OK.lower()}={ATTR_VALUE_DIS}",
+        ]
+        _, err = self.badfish_call()
+        assert f"Duplicate BIOS attribute supplied: {ATTRIBUTE_OK.lower()}" in err
+        assert mock_patch.call_count == 0
+        assert mock_post.call_count == 0
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.patch")
+    @patch("aiohttp.ClientSession.get")
+    def test_set_bios_attribute_registry_missing(self, mock_get, mock_patch, mock_post, mock_delete):
+        responses = INIT_RESP + ["{}"]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_patch, 200, ["OK"])
+        self.set_mock_response(mock_post, 200, ["OK", JOB_OK_RESP])
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = [
+            self.option_arg,
+            "--attribute",
+            ATTRIBUTE_OK,
+            "--value",
+            ATTR_VALUE_OK,
+        ]
+        _, err = self.badfish_call()
+        assert "BIOS attribute registry is not available on this system." in err
+        assert mock_patch.call_count == 0
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.patch")
+    @patch("aiohttp.ClientSession.get")
     def test_set_bios_attribute_mixed_flags(self, mock_get, mock_patch, mock_post, mock_delete):
         responses = INIT_RESP
         self.set_mock_response(mock_get, 200, responses)
