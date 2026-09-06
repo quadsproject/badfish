@@ -10,6 +10,7 @@ on:
       - 'pyproject.toml'
       - 'setup.cfg'
       - 'requirements.txt'
+      - 'setup.py'
       - '.github/workflows/rpmlint.yml'
 
   push:
@@ -20,6 +21,7 @@ on:
       - 'pyproject.toml'
       - 'setup.cfg'
       - 'requirements.txt'
+      - 'setup.py'
       - '.github/workflows/rpmlint.yml'
 
 concurrency:

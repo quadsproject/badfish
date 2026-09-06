@@ -2,6 +2,11 @@ PYTHON := python3
 BUILD_HELPER := ./build-helper
 
 VERSION = $(shell $(BUILD_HELPER) --version)
+# Fail loudly if VERSION resolves empty (e.g. setuptools missing) instead of
+# silently building badfish-.tar.gz and empty @VERSION@ substitutions.
+ifeq ($(strip $(VERSION)),)
+$(error Could not determine package version; is setuptools installed and importable?)
+endif
 RELEASE = $(shell $(BUILD_HELPER) --release)
 DATE = $(shell date +'%a %b %d %Y')
 TARBALL = badfish-$(VERSION).tar.gz
