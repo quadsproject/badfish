@@ -289,6 +289,8 @@ class Badfish:
 
     async def set_bios_attribute(self, attributes):
         data = await self.get_bios_attributes_registry()
+        if not data:
+            raise BadfishException("BIOS attribute registry is not available on this system.")
         # Resolve user-supplied attribute names to the registry's canonical
         # AttributeName up front, so oddly-cased NAME=value pairs (e.g.
         # bootmode=Uefi) read current values and PATCH with the BMC's exact
@@ -296,10 +298,12 @@ class Badfish:
         # "attribute not found".
         canonical_map = {}
         for entry in data["RegistryEntries"]["Attributes"]:
-            entries = [low_entry.lower() for low_entry in entry.values() if isinstance(low_entry, str)]
+            canonical_name = entry.get("AttributeName")
+            if not canonical_name:
+                continue
             for attribute in list(attributes):
-                if attribute.lower() in entries and attribute not in canonical_map:
-                    canonical_map[attribute] = entry.get("AttributeName") or attribute
+                if attribute.lower() == canonical_name.lower() and attribute not in canonical_map:
+                    canonical_map[attribute] = canonical_name
         for attribute in list(attributes):
             canonical = canonical_map.get(attribute)
             if canonical and canonical != attribute:
@@ -3020,7 +3024,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
                 if not _sep or not name.strip() or not attr_value.strip():
                     raise BadfishException(f"Invalid attribute/value pair supplied: {pair}")
                 name = name.strip()
-                if name in bios_attributes:
+                if name.lower() in (k.lower() for k in bios_attributes):
                     raise BadfishException(f"Duplicate BIOS attribute supplied: {name}")
                 bios_attributes[name] = attr_value.strip()
 
