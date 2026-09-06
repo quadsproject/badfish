@@ -296,16 +296,13 @@ class Badfish:
         # bootmode=Uefi) read current values and PATCH with the BMC's exact
         # attribute naming instead of failing with a misleading
         # "attribute not found".
-        canonical_map = {}
+        canonical_by_lower = {}
         for entry in data["RegistryEntries"]["Attributes"]:
             canonical_name = entry.get("AttributeName")
-            if not canonical_name:
-                continue
-            for attribute in list(attributes):
-                if attribute.lower() == canonical_name.lower() and attribute not in canonical_map:
-                    canonical_map[attribute] = canonical_name
+            if canonical_name:
+                canonical_by_lower.setdefault(canonical_name.lower(), canonical_name)
         for attribute in list(attributes):
-            canonical = canonical_map.get(attribute)
+            canonical = canonical_by_lower.get(attribute.lower())
             if canonical and canonical != attribute:
                 attributes[canonical] = attributes.pop(attribute)
 
