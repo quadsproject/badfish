@@ -12,6 +12,8 @@ concurrency:
 jobs:
     quay_dev:
         name: Push Quay (Dev)
+        # Only publish from the canonical repo; forks don't have the Quay secrets.
+        if: github.repository == 'quadsproject/badfish'
         runs-on: ubuntu-latest
         permissions:
             contents: read
