@@ -38,7 +38,9 @@ PASSWORD = os.environ.get("BADFISH_EMULATOR_PASSWORD", "quads")
 
 # Flat JSON user store, created at runtime. Throwaway by default; point
 # BADFISH_EMULATOR_USERS elsewhere to persist between emulator runs.
-USERS_PATH = os.environ.get("BADFISH_EMULATOR_USERS", "/tmp/badfish_emulator_users.json")
+_USERS_ENV = "BADFISH_EMULATOR_USERS"
+DEFAULT_USERS_PATH = "/tmp/badfish_emulator_users.json"
+USERS_PATH = os.environ.get(_USERS_ENV, DEFAULT_USERS_PATH)
 ROLES = ("ReadOnly", "Operator", "Administrator")
 
 # Single source of truth for the fake host's hardware identity. Changing a
@@ -144,7 +146,12 @@ class _UserStore:
         self._load(seed_user, seed_password)
 
     def _load(self, seed_user, seed_password):
-        if self.path and os.path.exists(self.path):
+        # Persistence is only honored when the store path is explicitly chosen
+        # (create_app(users_path) or BADFISH_EMULATOR_USERS). The default
+        # throwaway /tmp store must never silently adopt a preexisting file: a
+        # local user could pre-seed an Administrator there, and two emulator
+        # instances would race on one store.
+        if self.path and os.path.exists(self.path) and self.path != DEFAULT_USERS_PATH:
             try:
                 with open(self.path) as fh:
                     data = json.load(fh)
@@ -157,9 +164,12 @@ class _UserStore:
 
     def _save(self):
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        tmp = f"{self.path}.tmp"
+        # Unique temp name so concurrent instances don't race on the same .tmp,
+        # and 0600 so the plaintext store isn't world-readable under a default umask.
+        tmp = f"{self.path}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
         with open(tmp, "w") as fh:
             json.dump({"users": self.users}, fh, indent=2)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, self.path)
 
     def authenticate(self, username, password):
@@ -236,6 +246,7 @@ _STATIC_URI = {
     UPDATESERVICE: "update_service",
     f"{ROOT}/Dell/Managers/{SYSCONF['manager_id']}/DellJobService": "dell_job_service",
     f"{ROOT}/Dell/Systems/{SYSCONF['system_id']}/DellOSDeploymentService": "dell_os_deployment_service",
+    f"{ROOT}/TaskService": "task_service",
 }
 
 
@@ -260,6 +271,12 @@ def _collection_uri(uri, state):
         return _collection("ManagerAccount", uri, sorted(state.store.users))
     if uri == f"{MANAGER}/VirtualMedia":
         return _collection("VirtualMedia", uri, ["CD"])
+    if uri == f"{ROOT}/Chassis":
+        return _collection("Chassis", uri, [SYSCONF["chassis_id"]])
+    if uri == f"{ROOT}/TaskService/Tasks":
+        return _collection("Task", uri, list(state.tasks))
+    if uri == f"{ROOT}/Registries":
+        return _collection("Registry", uri, ["NetworkAttributesRegistry_1.0.0.json"])
     return None
 
 

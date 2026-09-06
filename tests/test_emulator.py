@@ -207,6 +207,51 @@ async def test_admin_creates_user_and_store_persists(tmp_path):
     await c2.close()
 
 
+async def test_service_root_links_are_served(client):
+    token = await _login(client)
+    headers = {"X-Auth-Token": token}
+    for uri in (
+        f"{_ROOT}/Chassis",
+        f"{_ROOT}/TaskService",
+        f"{_ROOT}/TaskService/Tasks",
+        f"{_ROOT}/Registries",
+    ):
+        resp = await client.get(uri, headers=headers)
+        assert resp.status == 200, uri
+    body = await (await client.get(f"{_ROOT}/Chassis", headers=headers)).json()
+    assert body["Members"][0]["@odata.id"] == CHASSIS
+
+
+async def test_user_store_is_0600(tmp_path):
+    users_path = str(tmp_path / "users.json")
+    app = emulator.create_app(users_path)
+    c = await _client(app)
+    token = await _login(c)
+    await c.post(
+        ACCOUNTS,
+        json={"UserName": "alice", "Password": "secret", "RoleId": "Operator"},
+        headers={"X-Auth-Token": token},
+    )
+    await c.close()
+    mode = Path(users_path).stat().st_mode & 0o777
+    assert oct(mode) == "0o600"
+
+
+async def test_default_store_not_trusted(tmp_path, monkeypatch):
+    # A local attacker pre-seeds the default throwaway /tmp store with an
+    # Administrator; the emulator must not adopt it.
+    plant = str(tmp_path / "plant.json")
+    monkeypatch.setattr(emulator, "DEFAULT_USERS_PATH", plant)
+    monkeypatch.setattr(emulator, "USERS_PATH", plant)
+    Path(plant).write_text('{"users":{"evil":{"password":"pwn","role":"Administrator","enabled":true}}}')
+    app = emulator.create_app()
+    c = await _client(app)
+    resp = await c.post(f"{_ROOT}/SessionService/Sessions", json={"UserName": "evil", "Password": "pwn"})
+    assert resp.status != 201
+    assert await _login(c)
+    await c.close()
+
+
 async def test_account_create_validation(client):
     token = await _login(client)
     headers = {"X-Auth-Token": token}

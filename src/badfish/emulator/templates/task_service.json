@@ -1,0 +1,17 @@
+{
+  "@odata.type": "#TaskService.v1_1_0.TaskService",
+  "Id": "TaskService",
+  "Name": "Task Service",
+  "ServiceEnabled": true,
+  "CompletedTaskOverWritePolicy": "Oldest",
+  "LifeCycleEventOnTaskStateChange": true,
+  "Tasks": {
+    "@odata.id": "/redfish/v1/TaskService/Tasks"
+  },
+  "Oem": {
+    "Dell": {
+      "@odata.type": "#DellTaskService.v1_0_0.DellTaskService",
+      "JobQueryPolicy": "AllJobs"
+    }
+  }
+}
