@@ -250,33 +250,37 @@ _STATIC_URI = {
 }
 
 
+# Data-driven registry of collection endpoints: (uri, resource, members_from_state).
+# Adding a collection is a row here, not a new branch in _collection_uri (open/closed).
+_COLLECTIONS = (
+    (f"{SYSTEM}/EthernetInterfaces", "EthernetInterface", lambda state: [n["id"] for n in SYSCONF["nics"]]),
+    (f"{SYSTEM}/Processors", "Processor", lambda state: [c["id"] for c in SYSCONF["cpus"]]),
+    (f"{SYSTEM}/Memory", "Memory", lambda state: [d["id"] for d in SYSCONF["dimms"]]),
+    (FIRMWARE, "SoftwareInventory", lambda state: [f"{f['id']}-Installed" for f in SYSCONF["firmware"]]),
+    (
+        f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts",
+        "NetworkPort",
+        lambda state: [n["id"] for n in SYSCONF["nics"]],
+    ),
+    (
+        f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions",
+        "NetworkDeviceFunction",
+        lambda state: [n["id"] for n in SYSCONF["nics"]],
+    ),
+    (f"{MANAGER}/Jobs", "Job", lambda state: list(state.jobs.keys())),
+    (f"{ROOT}/SessionService/Sessions", "Session", lambda state: [s["id"] for s in state.sessions.values()]),
+    (ACCOUNTS_URI, "ManagerAccount", lambda state: sorted(state.store.users)),
+    (f"{MANAGER}/VirtualMedia", "VirtualMedia", lambda state: ["CD"]),
+    (f"{ROOT}/Chassis", "Chassis", lambda state: [SYSCONF["chassis_id"]]),
+    (f"{ROOT}/TaskService/Tasks", "Task", lambda state: list(state.tasks)),
+    (f"{ROOT}/Registries", "Registry", lambda state: ["NetworkAttributesRegistry_1.0.0.json"]),
+)
+
+
 def _collection_uri(uri, state):
-    if uri == f"{SYSTEM}/EthernetInterfaces":
-        return _collection("EthernetInterface", uri, [n["id"] for n in SYSCONF["nics"]])
-    if uri == f"{SYSTEM}/Processors":
-        return _collection("Processor", uri, [c["id"] for c in SYSCONF["cpus"]])
-    if uri == f"{SYSTEM}/Memory":
-        return _collection("Memory", uri, [d["id"] for d in SYSCONF["dimms"]])
-    if uri == FIRMWARE:
-        return _collection("SoftwareInventory", uri, [f"{f['id']}-Installed" for f in SYSCONF["firmware"]])
-    if uri == f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkPorts":
-        return _collection("NetworkPort", uri, [n["id"] for n in SYSCONF["nics"]])
-    if uri == f"{SYSTEM}/NetworkAdapters/NIC.Integrated.1/NetworkDeviceFunctions":
-        return _collection("NetworkDeviceFunction", uri, [n["id"] for n in SYSCONF["nics"]])
-    if uri == f"{MANAGER}/Jobs":
-        return _collection("Job", uri, list(state.jobs.keys()))
-    if uri == f"{ROOT}/SessionService/Sessions":
-        return _collection("Session", uri, [s["id"] for s in state.sessions.values()])
-    if uri == ACCOUNTS_URI:
-        return _collection("ManagerAccount", uri, sorted(state.store.users))
-    if uri == f"{MANAGER}/VirtualMedia":
-        return _collection("VirtualMedia", uri, ["CD"])
-    if uri == f"{ROOT}/Chassis":
-        return _collection("Chassis", uri, [SYSCONF["chassis_id"]])
-    if uri == f"{ROOT}/TaskService/Tasks":
-        return _collection("Task", uri, list(state.tasks))
-    if uri == f"{ROOT}/Registries":
-        return _collection("Registry", uri, ["NetworkAttributesRegistry_1.0.0.json"])
+    for base, resource, members in _COLLECTIONS:
+        if uri == base:
+            return _collection(resource, uri, members(state))
     return None
 
 
@@ -566,6 +570,19 @@ async def _read_json(request):
         return None
 
 
+async def _read_body(_request):
+    """Parse a JSON request body, or return a 400 when the body is not valid JSON."""
+    _body = await _read_json(_request)
+    if _body is None:
+        raise web.HTTPBadRequest(text="Malformed JSON body.")
+    return _body
+
+
+def _next_job_id(state):
+    state._job_n += 1
+    return f"JID_{state._job_n:016d}"
+
+
 def _make_session(state, username):
     token = secrets.token_hex(16)
     state._job_n += 1
@@ -635,18 +652,14 @@ async def _post(_request):
     path = _request.path.rstrip("/")
 
     if path in (f"{ROOT}/SessionService/Sessions", f"{ROOT}/Sessions"):
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         if not state.store.authenticate(body.get("UserName"), body.get("Password")):
             return _unauthorized("Authentication failed. Verify your credentials.")
         resource, token, location = _make_session(state, body.get("UserName"))
         return _json(resource, status=201, headers={"X-Auth-Token": token, "Location": location})
 
     if path == ACCOUNTS_URI:
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         username = body.get("UserName")
         password = body.get("Password")
         role = body.get("RoleId") or "ReadOnly"
@@ -661,9 +674,7 @@ async def _post(_request):
         return _json(_m_account(uri, state), status=201, headers={"Location": uri})
 
     if path == f"{ACCOUNTSERVICE}/Actions/AccountService.ChangePassword":
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         if not state.store.authenticate(body.get("UserName"), body.get("OldPassword")):
             return _unauthorized("Old password is incorrect.")
         new_password = body.get("NewPassword")
@@ -678,9 +689,7 @@ async def _post(_request):
         return web.Response(status=204)
 
     if path == f"{SYSTEM}/Actions/ComputerSystem.Reset":
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         reset_type = body.get("ResetType")
         # A later reset supersedes any pending automatic power-on task.
         if state._restart_task is not None:
@@ -710,11 +719,8 @@ async def _post(_request):
         return web.Response(status=204)
 
     if path == f"{MANAGER}/Jobs":
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
-        state._job_n += 1
-        job_id = f"JID_{state._job_n:016d}"
+        body = await _read_body(_request)
+        job_id = _next_job_id(state)
         state.jobs[job_id] = {"TargetSettingsURI": body.get("TargetSettingsURI")}
         return _json(
             _m_job(f"{MANAGER}/Jobs/{job_id}", state, consume=False),
@@ -723,9 +729,7 @@ async def _post(_request):
         )
 
     if path == f"{MANAGER}/VirtualMedia/CD/Actions/VirtualMedia.InsertMedia":
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         state.vmedia_image = body.get("Image")
         return web.Response(status=204)
     if path == f"{MANAGER}/VirtualMedia/CD/Actions/VirtualMedia.EjectMedia":
@@ -757,13 +761,11 @@ async def _post(_request):
         return web.Response(status=200)
 
     if path.endswith("/Actions/Oem/EID_674_Manager.ExportSystemConfiguration"):
-        state._job_n += 1
-        job_id = f"JID_{state._job_n:016d}"
+        job_id = _next_job_id(state)
         state.jobs[job_id] = {"Export": True, "SystemConfiguration": {"ComponentResults": [], "Id": "SystemConfiguration"}}
         return web.Response(status=202, headers={"Location": f"{MANAGER}/Jobs/{job_id}"})
     if path.endswith("/Actions/Oem/EID_674_Manager.ImportSystemConfiguration"):
-        state._job_n += 1
-        job_id = f"JID_{state._job_n:016d}"
+        job_id = _next_job_id(state)
         state.tasks.add(job_id)
         return web.Response(status=202, headers={"Location": f"{ROOT}/TaskService/Tasks/{job_id}"})
 
@@ -777,9 +779,7 @@ async def _patch(_request):
     path = _request.path.rstrip("/")
 
     if path in (SYSTEM,):
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         boot = body.get("Boot", {})
         state.boot_target = boot.get("BootSourceOverrideTarget", state.boot_target)
         state.boot_enabled = boot.get("BootSourceOverrideEnabled", state.boot_enabled)
@@ -790,9 +790,7 @@ async def _patch(_request):
         user = state.store.users.get(username)
         if user is None:
             return _not_found(path)
-        body = await _read_json(_request)
-        if body is None:
-            return _bad_request("Malformed JSON body.")
+        body = await _read_body(_request)
         if "Password" in body:
             if not body["Password"]:
                 return _bad_request("Password cannot be empty.")
