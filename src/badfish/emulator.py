@@ -762,7 +762,10 @@ async def _post(_request):
 
     if path.endswith("/Actions/Oem/EID_674_Manager.ExportSystemConfiguration"):
         job_id = _next_job_id(state)
-        state.jobs[job_id] = {"Export": True, "SystemConfiguration": {"ComponentResults": [], "Id": "SystemConfiguration"}}
+        state.jobs[job_id] = {
+            "Export": True,
+            "SystemConfiguration": {"ComponentResults": [], "Id": "SystemConfiguration"},
+        }
         return web.Response(status=202, headers={"Location": f"{MANAGER}/Jobs/{job_id}"})
     if path.endswith("/Actions/Oem/EID_674_Manager.ImportSystemConfiguration"):
         job_id = _next_job_id(state)
