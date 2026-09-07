@@ -18,12 +18,17 @@ Source:         %{url}/releases/download/v%{version}/badfish-%{version}.tar.gz
 
 BuildArch:      noarch
 BuildRequires:  python3-devel
+# Emulator generates a self-signed TLS cert via the openssl CLI for %check.
+BuildRequires:  openssl
 # Test dependencies
 BuildRequires:  python3dist(pytest)
 BuildRequires:  python3dist(pytest-asyncio)
 BuildRequires:  python3dist(pyyaml)
 BuildRequires:  python3dist(aiohttp)
 Provides:       badfish = %{version}-%{release}
+# The emulator subcommand (badfish.emulator.run_daemon) shells out to openssl
+# to generate its self-signed TLS cert on first run.
+Requires:       openssl
 
 %description
 %{desc}
