@@ -183,9 +183,7 @@ class Badfish:
         if len(host_name_split) > 1:
             host_model = host_name_split[-1]
             rack = self.rack if self.rack is not None else host_name_split[1]
-            uloc = self.uloc if self.uloc is not None else (
-                host_name_split[2] if len(host_name_split) > 2 else None
-            )
+            uloc = self.uloc if self.uloc is not None else (host_name_split[2] if len(host_name_split) > 2 else None)
             for val in [rack, uloc]:
                 if val is not None:
                     prefix.append(val)
