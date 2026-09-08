@@ -417,6 +417,12 @@ async def test_emulator_end_to_end(monkeypatch, tmp_path):
 
         await bf.get_power_consumed_watts()
         assert await bf.get_bios_boot_mode() == "Bios"
+
+        # F8: the EthernetInterface member Id is now populated, so boot_to_mac
+        # resolves the MAC to a device and boots to it instead of raising
+        # "MAC Address does not match any of the existing" (device was None
+        # because the template rendered an empty Id).
+        await bf.boot_to_mac("00:5c:52:31:3a:9c")
     finally:
         if bf:
             await bf.delete_session()
@@ -440,6 +446,7 @@ async def test_inventory_collections_and_members(client):
     nic = await (await client.get(f"{SYSTEM}/EthernetInterfaces/NIC.Integrated.1-1-1", headers=headers)).json()
     assert nic["MACAddress"] == "00:5c:52:31:3a:9c"
     assert nic["LinkStatus"] == "Up"
+    assert nic["Id"] == "NIC.Integrated.1-1-1"
 
     # Network adapter inventory the way badfish walks it: the NetworkPorts and
     # NetworkDeviceFunctions collections under each adapter (get_nic_fqdds) and
@@ -474,12 +481,14 @@ async def test_inventory_collections_and_members(client):
     assert procs["Members@odata.count"] == 2
     cpu = await (await client.get(f"{SYSTEM}/Processors/CPU.Socket.1", headers=headers)).json()
     assert cpu["Model"] and cpu["TotalCores"] > 0
+    assert cpu["Id"] == "CPU.Socket.1"
 
     mem = await (await client.get(f"{SYSTEM}/Memory", headers=headers)).json()
     assert mem["Members@odata.count"] == 2
     dimm = await (await client.get(f"{SYSTEM}/Memory/DIMM.Socket.A1", headers=headers)).json()
     assert dimm["CapacityMiB"] == 32768
     assert dimm["Manufacturer"] == "Micron"
+    assert dimm["Id"] == "DIMM.Socket.A1"
 
     assert (await client.get(f"{SYSTEM}/Memory/DIMM.Socket.ZZ", headers=headers)).status == 404
     assert (await client.get(f"{FIRMWARE}/NOPE", headers=headers)).status == 404
