@@ -4,9 +4,9 @@ USER root
 
 RUN dnf install -y git
 
-RUN git clone https://github.com/quadsproject/badfish
+COPY . /badfish
 
-WORKDIR badfish
+WORKDIR /badfish
 
 RUN dnf install -y gcc python3-devel
 RUN pip install --upgrade pip
