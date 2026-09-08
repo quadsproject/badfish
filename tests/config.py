@@ -418,7 +418,7 @@ FIRMWARE_INVENTORY_1_RESP = (
     "{"
     '"Id": "Installed-0-16.25.40.62",'
     '"Name": "Mellanox ConnectX-5",'
-    '"ReleaseDate": "00:00:00Z",'
+    '"ReleaseDate": "0000-00-00T00:00:00Z",'
     '"SoftwareId": "0",'
     '"Status": {"Health": "OK","State": "Enabled"},'
     '"Updateable": "True",'
@@ -428,7 +428,7 @@ FIRMWARE_INVENTORY_2_RESP = (
     "{"
     '"Id": "Installed-0-19.5.12",'
     '"Name": "Intel(R) Ethernet Network Adapter",'
-    '"ReleaseDate": "00:00:00Z",'
+    '"ReleaseDate": "0000-00-00T00:00:00Z",'
     '"SoftwareId": "0",'
     '"Status": {"Health": "OK","State": "Enabled"},'
     '"Updateable": "True",'
@@ -439,7 +439,7 @@ RESPONSE_FIRMWARE_INVENTORY = (
     "- INFO     - Installed-0-16.25.40.62:\n"
     "- INFO     -     Id: Installed-0-16.25.40.62\n"
     "- INFO     -     Name: Mellanox ConnectX-5\n"
-    "- INFO     -     ReleaseDate: 00:00:00Z\n"
+    "- INFO     -     ReleaseDate: 0000-00-00T00:00:00Z\n"
     "- INFO     -     SoftwareId: 0\n"
     "- INFO     -     Status: {'Health': 'OK', 'State': 'Enabled'}\n"
     "- INFO     -     Updateable: True\n"
@@ -447,7 +447,7 @@ RESPONSE_FIRMWARE_INVENTORY = (
     "- INFO     - Installed-0-19.5.12:\n"
     "- INFO     -     Id: Installed-0-19.5.12\n"
     "- INFO     -     Name: Intel(R) Ethernet Network Adapter\n"
-    "- INFO     -     ReleaseDate: 00:00:00Z\n"
+    "- INFO     -     ReleaseDate: 0000-00-00T00:00:00Z\n"
     "- INFO     -     SoftwareId: 0\n"
     "- INFO     -     Status: {'Health': 'OK', 'State': 'Enabled'}\n"
     "- INFO     -     Updateable: True\n"
@@ -458,7 +458,7 @@ RESPONSE_FIRMWARE_INVENTORY_NONE_RESPONSE = (
     "- INFO     - Installed-0-16.25.40.62:\n"
     "- INFO     -     Id: Installed-0-16.25.40.62\n"
     "- INFO     -     Name: Mellanox ConnectX-5\n"
-    "- INFO     -     ReleaseDate: 00:00:00Z\n"
+    "- INFO     -     ReleaseDate: 0000-00-00T00:00:00Z\n"
     "- INFO     -     SoftwareId: 0\n"
     "- INFO     -     Status: {'Health': 'OK', 'State': 'Enabled'}\n"
     "- INFO     -     Updateable: True\n"
