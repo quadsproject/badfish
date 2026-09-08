@@ -1353,15 +1353,18 @@ class Badfish:
         if not self.boot_devices:
             await self.get_boot_devices()
 
+        boot_order = {"BootOrder": [device["Name"] for device in sorted(self.boot_devices, key=lambda x: x["Index"])]}
+
         if _interfaces_path:
             _host_type = await self.get_host_type(_interfaces_path)
             if _host_type:
-                self.logger.warning("Current boot order is set to: %s." % _host_type)
+                boot_order["HostType"] = _host_type
+                self.logger.warning("Current boot order is set to: %s." % _host_type, extra={"obj": boot_order})
                 return True
             else:
                 self.logger.warning("Current boot order does not match any of the given.")
 
-        self.logger.info("Current boot order:")
+        self.logger.info("Current boot order:", extra={"obj": boot_order})
         if self._use_tables:
             table = Table(show_header=True, header_style="bold")
             table.add_column("#", justify="right")

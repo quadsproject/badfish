@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from io import StringIO
 
@@ -29,12 +30,34 @@ class NoAliasDumper(yaml.SafeDumper):
         return True
 
 
+class BadfishSafeLoader(yaml.SafeLoader):
+    """SafeLoader that keeps YAML timestamps as strings.
+
+    Real iDRAC firmware data carries ReleaseDate values such as
+    ``0000-00-00T00:00:00Z``. PyYAML's default timestamp constructor converts
+    these to ``datetime`` which raises ``ValueError: year 0 is out of range``.
+    Returning the raw scalar keeps the value a string and avoids the crash.
+    """
+
+
+BadfishSafeLoader.add_constructor(
+    "tag:yaml.org,2002:timestamp",
+    lambda loader, node: loader.construct_scalar(node),
+)
+
+
+def _safe_load(message):
+    """YAML load using :class:`BadfishSafeLoader` (timestamps stay strings)."""
+    return yaml.load(message, Loader=BadfishSafeLoader)
+
+
 class BadfishHandler(StreamHandler):
     def __init__(self, format_flag=False):
         StreamHandler.__init__(self)
         self.messages = {}
         self.formatted_msg = []
         self.output_dict = dict()
+        self.structured = {}
         self.host = None
         self.format_flag = format_flag
 
@@ -45,6 +68,12 @@ class BadfishHandler(StreamHandler):
 
         if getattr(record, "is_table", False):
             return
+
+        # Structured records (e.g. check-boot) are preferred over re-parsing
+        # the human log text when generating json/yaml output.
+        obj = getattr(record, "obj", None)
+        if obj is not None:
+            self.structured[record.name] = obj
 
         if record.levelno == INFO and record.msg != "*" * 48:
             if record.name not in self.messages:
@@ -58,11 +87,20 @@ class BadfishHandler(StreamHandler):
         try:
             if self.host:
                 host_name = self.host.strip().split(".")[0]
+                structured = self.structured.get(host_name)
+                if structured is not None:
+                    self.output_dict.update({self.host: structured.copy()})
+                    self.host = None
+                    return
                 # Ensure the message is properly formatted as YAML by wrapping values in quotes
-                message = self.messages[host_name]
+                message = self.messages.get(host_name)
+                if not message:
+                    self.output_dict = {"unsupported_command": True}
+                    self.host = None
+                    return
                 # Try to parse as is first
                 try:
-                    new_dict = yaml.safe_load(message)
+                    new_dict = _safe_load(message)
                 except yaml.YAMLError:
                     # If parsing fails, try to format the value as a quoted string
                     lines = message.strip().split("\n")
@@ -78,15 +116,22 @@ class BadfishHandler(StreamHandler):
                         else:
                             formatted_lines.append(line)
                     formatted_message = "\n".join(formatted_lines)
-                    new_dict = yaml.safe_load(formatted_message)
+                    new_dict = _safe_load(formatted_message)
 
                 self.output_dict.update({self.host: new_dict.copy()})
                 self.host = None
             else:
-                message = self.messages["badfish.helpers.logger"]
+                structured = self.structured.get("badfish.helpers.logger")
+                if structured is not None:
+                    self.output_dict.update(structured.copy())
+                    return
+                message = self.messages.get("badfish.helpers.logger")
+                if not message:
+                    self.output_dict = {"unsupported_command": True}
+                    return
                 # Apply the same formatting logic for non-host messages
                 try:
-                    new_dict = yaml.safe_load(message)
+                    new_dict = _safe_load(message)
                 except yaml.YAMLError:
                     lines = message.strip().split("\n")
                     formatted_lines = []
@@ -100,59 +145,78 @@ class BadfishHandler(StreamHandler):
                         else:
                             formatted_lines.append(line)
                     formatted_message = "\n".join(formatted_lines)
-                    new_dict = yaml.safe_load(formatted_message)
+                    new_dict = _safe_load(formatted_message)
 
                 self.output_dict.update(new_dict.copy())
-        except yaml.YAMLError:
+        except (yaml.YAMLError, ValueError):
             self.output_dict = {"unsupported_command": True}
 
     def diff(self):
-        try:
-            if self.output_dict["error"]:
-                return f"ERROR - {self.output_dict['error_msg']}"
-        except KeyError:
-            host_first, host_second, *_ = self.output_dict.keys()
-            first, second, *_ = self.output_dict.values()
-            diff_dict = {host_first: {}, host_second: {}}
-            for i in first:
-                for j in second:
-                    if (
-                        first[i]["SoftwareId"] == second[j]["SoftwareId"]
-                        and first[i]["Version"] != second[j]["Version"]
-                        and first[i]["SoftwareId"] != 0
-                    ):
-                        diff_dict[host_first].update(
-                            {
-                                i: {
-                                    "Version": first[i]["Version"],
-                                    "Name": first[i]["Name"],
-                                }
-                            }
-                        )
-                        diff_dict[host_second].update(
-                            {
-                                j: {
-                                    "Version": second[j]["Version"],
-                                    "Name": second[j]["Name"],
-                                }
-                            }
-                        )
+        if self.output_dict.get("error"):
+            return f"ERROR - {self.output_dict.get('error_msg')}"
 
-            if diff_dict[host_first] == {}:
-                return "{}"
-            output = ""
-            formatted = json.dumps(diff_dict[host_first], indent=4, sort_keys=False, default=str)
-            len_first = (max(len(line) for line in formatted.splitlines())) + 10
-            output += f"{host_first}:".ljust(len_first)
-            output += f"{host_second}:\n"
-            for i, j in zip(diff_dict[host_first], diff_dict[host_second]):
-                output += f"{i}".ljust(len_first)
-                output += f"{j}\n"
-                output += f"\t- Name: {(diff_dict[host_first][i])['Name']}".ljust(len_first)
-                output += f"\t- Name: {(diff_dict[host_second][j])['Name']}\n"
-                output += f"\t- Version: {(diff_dict[host_first][i])['Version']}".ljust(len_first)
-                output += f"\t- Version: {(diff_dict[host_second][j])['Version']}\n"
-            return output
+        # F4: only compare across exactly two hosts, each a dict of firmware rows.
+        if len(self.output_dict) != 2:
+            return "{}"
+        (host_first, first), (host_second, second) = self.output_dict.items()
+        if not isinstance(first, dict) or not isinstance(second, dict):
+            return "{}"
+
+        diff_dict = {host_first: {}, host_second: {}}
+        pairs = []
+        for i in first:
+            if not isinstance(first[i], dict):
+                continue
+            for j in second:
+                if not isinstance(second[j], dict):
+                    continue
+                # .get() so rows missing SoftwareId/Version/Name don't raise;
+                # skip pairs that cannot be matched by SoftwareId.
+                first_sid = first[i].get("SoftwareId")
+                second_sid = second[j].get("SoftwareId")
+                if first_sid is None or second_sid is None or first_sid != second_sid:
+                    continue
+                if first_sid == 0:
+                    continue
+                # Skip pairs that lack a Version to compare.
+                if first[i].get("Version") is None or second[j].get("Version") is None:
+                    continue
+                # Compare via str() so YAML floats (e.g. 3.57) resolve identically.
+                if str(first[i].get("Version")) == str(second[j].get("Version")):
+                    continue
+                diff_dict[host_first].update(
+                    {
+                        i: {
+                            "Version": first[i].get("Version"),
+                            "Name": first[i].get("Name"),
+                        }
+                    }
+                )
+                diff_dict[host_second].update(
+                    {
+                        j: {
+                            "Version": second[j].get("Version"),
+                            "Name": second[j].get("Name"),
+                        }
+                    }
+                )
+                pairs.append((i, j))
+
+        if diff_dict[host_first] == {}:
+            return "{}"
+        output = ""
+        formatted = json.dumps(diff_dict[host_first], indent=4, sort_keys=False, default=str)
+        len_first = (max(len(line) for line in formatted.splitlines())) + 10
+        output += f"{host_first}:".ljust(len_first)
+        output += f"{host_second}:\n"
+        for i, j in pairs:
+            output += f"{i}".ljust(len_first)
+            output += f"{j}\n"
+            output += f"\t- Name: {(diff_dict[host_first][i])['Name']}".ljust(len_first)
+            output += f"\t- Name: {(diff_dict[host_second][j])['Name']}\n"
+            output += f"\t- Version: {(diff_dict[host_first][i])['Version']}".ljust(len_first)
+            output += f"\t- Version: {(diff_dict[host_second][j])['Version']}\n"
+        return output
 
     def output(self, output_type, host_order=None):
         if output_type == "json":
@@ -257,6 +321,9 @@ class BadfishLogger:
         self.queue_listener.start()
 
         if self.log_file:
+            log_dir = os.path.dirname(self.log_file)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
             self.file_handler = FileHandler(self.log_file)
             self.file_handler.setFormatter(Formatter(_file_format_str))
             self.file_handler.setLevel(self.log_level)
