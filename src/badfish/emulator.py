@@ -290,6 +290,7 @@ def _member(tmpl_key, items, member_id, uri, fill=None):
         return None
     data = _tmpl(tmpl_key)
     data["@odata.id"] = uri
+    data["Id"] = member_id
     if fill:
         fill(data, item)
     return data
