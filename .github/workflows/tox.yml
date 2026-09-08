@@ -2,7 +2,7 @@ name: Tox
 
 on:
   pull_request:
-    types: [opened, edited]
+    types: [opened, edited, synchronize]
     branches: [development, master]
 
   push:
