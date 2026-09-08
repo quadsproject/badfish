@@ -1,7 +1,11 @@
+import json
+import logging
 import os
+import pytest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from badfish.main import Badfish
 from tests.config import (
     BLANK_RESP,
     INIT_RESP,
@@ -45,6 +49,38 @@ def fixed_datetime():
 def export_dir_check():
     if not os.path.exists("exports"):
         os.makedirs("exports")
+
+
+@pytest.mark.asyncio
+async def test_export_scp_saves_file_inside_target_dir(tmp_path):
+    """The exported file must land INSIDE the given directory (no trailing slash)."""
+    logger = MagicMock(spec=logging.Logger)
+    bf = Badfish("test_host", "user", "pass", logger, 1)
+    bf.http_client = MagicMock()
+
+    config_body = {"SystemConfiguration": {"Settings": {"value": 1}}}
+    job_resp = MagicMock()
+    job_resp.text = AsyncMock(return_value=json.dumps(config_body))
+
+    post_resp = MagicMock()
+    post_resp.status = 202
+    post_resp.headers = {"Location": f"/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/{JOB_ID}"}
+
+    bf.post_request = AsyncMock(return_value=post_resp)
+    bf._extract_job_id_from_response = MagicMock(return_value=JOB_ID)
+    bf.get_request = AsyncMock(return_value=job_resp)
+
+    expected_name = f"{FIXED_BASE_TIME.strftime('%Y-%m-%d_%H%M%S')}_targets_ALL_export.json"
+
+    with patch("badfish.main.asyncio.sleep", new=AsyncMock()), patch(
+        "badfish.main.get_now", return_value=FIXED_BASE_TIME
+    ):
+        result = await bf.export_scp(str(tmp_path), "ALL")
+
+    assert result is True
+    # os.path.join semantics: the file lives under tmp_path, not as a sibling.
+    assert (tmp_path / expected_name).is_file()
+    assert not (tmp_path.parent / expected_name).exists()
 
 
 class TestGetSCPTargets(TestBase):

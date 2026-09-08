@@ -1,5 +1,9 @@
-from unittest.mock import patch
+import logging
 
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from badfish.main import Badfish
 from tests.config import (
     BAD_DEVICE_NAME,
     BLANK_RESP,
@@ -159,3 +163,15 @@ class TestBootTo(TestBase):
         # The error path executes L805-806, but error_handler raises BadfishException
         # which gets caught at higher level and logs generic message
         assert "Failed to communicate" in err
+
+
+@pytest.mark.asyncio
+async def test_boot_to_returns_false_on_no_match():
+    """boot_to() must return False (not None) when the device does not match."""
+    logger = MagicMock(spec=logging.Logger)
+    bf = Badfish("test_host", "user", "pass", logger, 1)
+    bf.check_device = AsyncMock(return_value=False)
+
+    result = await bf.boot_to("bad_device")
+
+    assert result is False
