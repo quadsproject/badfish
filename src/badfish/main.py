@@ -115,6 +115,8 @@ class Badfish:
         self.session_id = None
         self.token = None
         self.vendor = None
+        self.virtual_media_resource = None
+        self.os_deployment_resource = None
         self.console = _console if _console is not None else Console()
         self._progress_disabled = _progress_disabled
         # Tables are useful only in the same conditions as progress bars: TTY,
@@ -1533,14 +1535,60 @@ class Badfish:
         await self.reboot_server(graceful=False)
         return True
 
-    async def get_virtual_media_config(self):
-        vm_path = "/"
-        if self.vendor == "Supermicro":
-            vm_path += "VM1"
-        else:
-            vm_path += "VirtualMedia"
+    @staticmethod
+    def is_optical_media(_id, media_types=None):
+        """Whether a VirtualMedia member is the virtual optical drive."""
+        if "CD" in str(_id):
+            return True
+        return bool(set(media_types or []) & {"CD", "DVD"})
 
-        _uri = "%s%s%s" % (self.host_uri, self.manager_resource, vm_path)
+    async def find_virtual_media_resource(self):
+        """Resolve the virtual media collection.
+
+        iDRAC10 dropped the collection under the manager resource and only
+        serves it under the system resource.
+        """
+        if self.virtual_media_resource:
+            return self.virtual_media_resource
+
+        if self.vendor == "Supermicro":
+            candidates = ["%s/VM1" % self.manager_resource]
+        else:
+            candidates = [
+                "%s/VirtualMedia" % self.manager_resource,
+                "%s/VirtualMedia" % self.system_resource,
+            ]
+
+        for candidate in candidates:
+            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
+            if _response.status == 200:
+                self.virtual_media_resource = candidate
+                return candidate
+
+        raise BadfishException("Not able to access virtual media resource.")
+
+    async def get_virtual_media_device(self, vm_config):
+        """Resolve the virtual optical media device from a media collection."""
+        for member in vm_config:
+            if self.is_optical_media(member.split("/")[-1]):
+                return member
+
+        for member in vm_config:
+            _response = await self.get_request("%s%s" % (self.host_uri, member))
+            try:
+                raw = await _response.text("utf-8", "ignore")
+                data = json.loads(raw.strip())
+            except ValueError:
+                raise BadfishException("There was something wrong getting values for VirtualMedia")
+            if self.is_optical_media(data.get("Id"), data.get("MediaTypes")):
+                return member
+
+        raise BadfishException("No virtual optical media device found.")
+
+    async def get_virtual_media_config(self):
+        vm_resource = await self.find_virtual_media_resource()
+
+        _uri = "%s%s" % (self.host_uri, vm_resource)
         _response = await self.get_request(_uri)
         try:
             raw = await _response.text("utf-8", "ignore")
@@ -1593,7 +1641,9 @@ class Badfish:
                 self.logger.info(f"    Name: {_data.get('Name')}")
                 self.logger.info(f"    ImageName: {_data.get('ImageName')}")
                 self.logger.info(f"    Inserted: {_data.get('Inserted')}")
-                if str(_data.get("Inserted")).lower() == "true" and "CD" in str(_data.get("Id")):
+                if str(_data.get("Inserted")).lower() == "true" and self.is_optical_media(
+                    _data.get("Id"), _data.get("MediaTypes")
+                ):
                     inserted = True
             except ValueError:
                 raise BadfishException("There was something wrong getting values for VirtualMedia")
@@ -1620,7 +1670,7 @@ class Badfish:
             else:
                 raise BadfishException("There was something wrong trying to mount virtual media.")
         else:
-            vcd = [x for x in vm_config if "CD" in x][0]
+            vcd = await self.get_virtual_media_device(vm_config)
             _uri = "%s%s/Actions/VirtualMedia.InsertMedia" % (self.host_uri, vcd)
             _payload = {"Image": path}
             _response = await self.post_request(_uri, payload=_payload, headers=_headers)
@@ -1654,7 +1704,7 @@ class Badfish:
             _uri = "%s%s" % (self.host_uri, vm_config["config"])
             _response = await self.patch_request(_uri, payload=_payload, headers=_headers)
         else:
-            vcd = [x for x in vm_config if "CD" in x][0]
+            vcd = await self.get_virtual_media_device(vm_config)
             _uri = "%s%s/Actions/VirtualMedia.EjectMedia" % (self.host_uri, vcd)
             _response = await self.post_request(_uri, payload={}, headers=_headers)
             status = _response.status
@@ -1713,11 +1763,31 @@ class Badfish:
                 return False
         return True
 
+    async def find_os_deployment_resource(self):
+        """Resolve the Dell OS deployment service.
+
+        iDRAC10 dropped the legacy /redfish/v1/Dell OEM namespace and serves
+        the service under the system resource instead.
+        """
+        if self.os_deployment_resource:
+            return self.os_deployment_resource
+
+        system_id = self.system_resource.split("/")[-1]
+        candidates = [
+            "%s/Oem/Dell/DellOSDeploymentService" % self.system_resource,
+            "%s/Dell/Systems/%s/DellOSDeploymentService" % (self.redfish_uri, system_id),
+        ]
+
+        for candidate in candidates:
+            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
+            if _response.status == 200:
+                self.os_deployment_resource = candidate
+                return candidate
+
+        return None
+
     async def check_os_deployment_support(self):
-        _uri = "%s/redfish/v1/Dell/Systems/System.Embedded.1/DellOSDeploymentService" % self.host_uri
-        _response = await self.get_request(_uri)
-        await _response.text("utf-8", "ignore")
-        if _response.status != 200:
+        if not await self.find_os_deployment_resource():
             self.logger.error(
                 "iDRAC version installed doesn't support DellOSDeploymentService needed for this feature."
             )
@@ -1727,10 +1797,7 @@ class Badfish:
     async def check_remote_image(self):
         if not await self.check_os_deployment_support():
             return False
-        _uri = (
-            "%s/redfish/v1/Dell/Systems/System.Embedded.1/DellOSDeploymentService/Actions/DellOSDeploymentService."
-            "GetAttachStatus" % self.host_uri
-        )
+        _uri = "%s%s/Actions/DellOSDeploymentService.GetAttachStatus" % (self.host_uri, self.os_deployment_resource)
         _headers = {"Content-Type": "application/json"}
         _response = await self.post_request(_uri, payload={}, headers=_headers)
         try:
@@ -1749,10 +1816,7 @@ class Badfish:
     async def boot_remote_image(self, nfs_path):
         if not await self.check_os_deployment_support():
             return False
-        _uri = (
-            "%s/redfish/v1/Dell/Systems/System.Embedded.1/DellOSDeploymentService/Actions/DellOSDeploymentService"
-            ".BootToNetworkISO" % self.host_uri
-        )
+        _uri = "%s%s/Actions/DellOSDeploymentService.BootToNetworkISO" % (self.host_uri, self.os_deployment_resource)
         _headers = {"Content-Type": "application/json"}
         try:
             split_path = str(nfs_path).split(":")
@@ -1791,10 +1855,7 @@ class Badfish:
     async def detach_remote_image(self):
         if not await self.check_os_deployment_support():
             return False
-        _uri = (
-            "%s/redfish/v1/Dell/Systems/System.Embedded.1/DellOSDeploymentService/Actions/DellOSDeploymentService"
-            ".DetachISOImage" % self.host_uri
-        )
+        _uri = "%s%s/Actions/DellOSDeploymentService.DetachISOImage" % (self.host_uri, self.os_deployment_resource)
         _headers = {"Content-Type": "application/json"}
         _response = await self.post_request(_uri, payload={}, headers=_headers)
         if _response.status == 200:

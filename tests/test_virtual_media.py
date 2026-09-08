@@ -529,7 +529,7 @@ class TestBootRemoteImage(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_boot_good(self, mock_get, mock_post, mock_delete):
-        responses_get = [BLANK_RESP, VMEDIA_REMOTE_BOOT_TASK_RESP]
+        responses_get = [VMEDIA_REMOTE_BOOT_TASK_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 202], "OK", True)
@@ -568,7 +568,7 @@ class TestBootRemoteImage(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_boot_task_fail(self, mock_get, mock_post, mock_delete):
-        responses_get = [BLANK_RESP, VMEDIA_REMOTE_BOOT_TASK_FAILED_RESP]
+        responses_get = [VMEDIA_REMOTE_BOOT_TASK_FAILED_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 202], "OK", True)
