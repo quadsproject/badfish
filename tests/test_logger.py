@@ -1,6 +1,6 @@
 import os
 import tempfile
-from logging import INFO, ERROR, DEBUG, LogRecord
+from logging import INFO, ERROR, DEBUG, WARNING, LogRecord
 
 from badfish.helpers.logger import BadfishHandler, BadfishFormatter, BadfishLogger
 import yaml
@@ -94,9 +94,7 @@ class TestBadfishHandler:
         handler = BadfishHandler(format_flag=True)
         handler.host = "hostx"
         handler.messages["hostx"] = "key: value\n"
-        with patch(
-            "badfish.helpers.logger.yaml.safe_load", side_effect=[yaml.YAMLError("bad1"), yaml.YAMLError("bad2")]
-        ):
+        with patch("badfish.helpers.logger._safe_load", side_effect=[yaml.YAMLError("bad1"), yaml.YAMLError("bad2")]):
             handler.parse()
         assert handler.output_dict == {"unsupported_command": True}
 
@@ -104,11 +102,56 @@ class TestBadfishHandler:
         handler = BadfishHandler(format_flag=True)
         # No host set, exercise the else branch
         handler.messages["badfish.helpers.logger"] = "key: value\n"
-        with patch(
-            "badfish.helpers.logger.yaml.safe_load", side_effect=[yaml.YAMLError("bad1"), yaml.YAMLError("bad2")]
-        ):
+        with patch("badfish.helpers.logger._safe_load", side_effect=[yaml.YAMLError("bad1"), yaml.YAMLError("bad2")]):
             handler.parse()
         assert handler.output_dict == {"unsupported_command": True}
+
+    def test_parse_zero_date_release_date_stays_string(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.messages["badfish.helpers.logger"] = (
+            "Installed-0-16.25.40.62:\n"
+            "    Id: Installed-0-16.25.40.62\n"
+            "    Name: Mellanox ConnectX-5\n"
+            "    ReleaseDate: 0000-00-00T00:00:00Z\n"
+            "    SoftwareId: 0\n"
+            "    Version: 16.25.40.62\n"
+        )
+        handler.parse()
+        row = handler.output_dict["Installed-0-16.25.40.62"]
+        assert row["ReleaseDate"] == "0000-00-00T00:00:00Z"
+
+    def test_parse_missing_message_sets_error_marker(self):
+        handler = BadfishHandler(format_flag=True)
+        # No INFO message and no structured data must not raise (F13).
+        handler.parse()
+        assert handler.output_dict == {"unsupported_command": True}
+
+    def test_parse_uses_structured_check_boot_data(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.structured["badfish.helpers.logger"] = {
+            "BootOrder": ["NIC.Integrated.1-1-1"],
+            "HostType": "foreman",
+        }
+        handler.parse()
+        assert handler.output_dict == {"BootOrder": ["NIC.Integrated.1-1-1"], "HostType": "foreman"}
+
+    def test_emit_stores_structured_obj(self):
+        handler = BadfishHandler(format_flag=True)
+        record = LogRecord(
+            name="badfish.helpers.logger",
+            level=WARNING,
+            pathname=__file__,
+            lineno=1,
+            msg="Current boot order is set to: foreman.",
+            args=(),
+            exc_info=None,
+        )
+        record.obj = {"BootOrder": ["NIC.Integrated.1-1-1"], "HostType": "foreman"}
+        handler.emit(record)
+        assert handler.structured["badfish.helpers.logger"] == {
+            "BootOrder": ["NIC.Integrated.1-1-1"],
+            "HostType": "foreman",
+        }
 
     def test_diff_returns_error_if_error_flag_set(self):
         handler = BadfishHandler(format_flag=True)
@@ -136,6 +179,34 @@ class TestBadfishHandler:
         handler.output_dict = {
             "h1": {"a": {"SoftwareId": 1, "Version": "1", "Name": "A"}},
             "h2": {"b": {"SoftwareId": 1, "Version": "1", "Name": "A"}},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_tolerates_zero_hosts(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {}
+        assert handler.diff() == "{}"
+
+    def test_diff_tolerates_single_host(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": {"SoftwareId": 1, "Version": "1", "Name": "A"}},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_tolerates_missing_software_id(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": {"Version": "1", "Name": "A"}},
+            "h2": {"b": {"Version": "2", "Name": "B"}},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_tolerates_missing_version(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": {"SoftwareId": 1, "Name": "A"}},
+            "h2": {"b": {"SoftwareId": 1, "Name": "B"}},
         }
         assert handler.diff() == "{}"
 
@@ -212,6 +283,15 @@ class TestBadfishLogger:
                 os.remove(path)
             except OSError:
                 pass
+
+    def test_logger_creates_missing_log_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "sub", "dir", "bad.log")
+            logger = BadfishLogger(verbose=False, multi_host=False, log_file=log_path)
+            try:
+                assert os.path.isdir(os.path.join(tmp, "sub", "dir"))
+            finally:
+                logger.queue_listener.stop()
 
     def test_logger_verbose_and_output_flag_behavior(self):
         logger = BadfishLogger(verbose=True, multi_host=False, output=True)
