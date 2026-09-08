@@ -1,7 +1,12 @@
+import logging
 import os
-from unittest.mock import patch
+from collections import defaultdict
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from badfish.helpers.exceptions import BadfishException
+from badfish.main import Badfish, execute_badfish
 from tests.config import (
     HOST_LIST_EXTRAS,
     KEYBOARD_INTERRUPT,
@@ -161,3 +166,53 @@ class TestInitialization(TestBase):
         # When Members array is empty or missing, init() catches the exception and logs as WARNING
         assert "- WARNING  - Could not find system resource:" in err
         assert "Systems resource not found" in err or "ComputerSystem's Members array" in err
+
+
+@pytest.mark.asyncio
+async def test_execute_badfish_boot_to_false_sets_result_false():
+    """execute_badfish() must propagate a False return from boot_to() to `result`."""
+    logger = MagicMock(spec=logging.Logger)
+    fake_badfish = MagicMock()
+    fake_badfish.boot_to = AsyncMock(return_value=False)
+    fake_badfish.session_id = None
+    mock_args = defaultdict(lambda: None)
+    mock_args.update({"u": "user", "p": "pass", "retries": 1, "boot_to": "NIC.1"})
+
+    with patch("badfish.main.badfish_factory", new_callable=AsyncMock) as mock_factory:
+        mock_factory.return_value = fake_badfish
+        result = await execute_badfish("test_host", mock_args, logger, None)
+
+    assert result == ("test_host", False)
+    fake_badfish.boot_to.assert_awaited_once_with("NIC.1")
+
+
+@pytest.mark.asyncio
+async def test_find_systems_resource_invalid_root_json_raises_badfish_exception():
+    """Invalid JSON from the root resource must surface as BadfishException, not JSONDecodeError."""
+    logger = MagicMock(spec=logging.Logger)
+    bf = Badfish("test_host", "user", "pass", logger, 1)
+    bf.http_client = MagicMock()
+
+    root_resp = MagicMock()
+    root_resp.text = AsyncMock(return_value="not json {")
+    bf.http_client.get_request = AsyncMock(return_value=root_resp)
+
+    with pytest.raises(BadfishException, match="Error reading response from host."):
+        await bf.find_systems_resource()
+
+
+@pytest.mark.asyncio
+async def test_find_systems_resource_invalid_systems_json_raises_badfish_exception():
+    """Invalid JSON from the Systems resource must surface as BadfishException, not JSONDecodeError."""
+    logger = MagicMock(spec=logging.Logger)
+    bf = Badfish("test_host", "user", "pass", logger, 1)
+    bf.http_client = MagicMock()
+
+    root_resp = MagicMock()
+    root_resp.text = AsyncMock(return_value='{"Systems":{"@odata.id":"/redfish/v1/Systems"}}')
+    sys_resp = MagicMock()
+    sys_resp.text = AsyncMock(return_value="<html>bad</html>")
+    bf.http_client.get_request = AsyncMock(side_effect=[root_resp, sys_resp])
+
+    with pytest.raises(BadfishException, match="Error reading response from host."):
+        await bf.find_systems_resource()

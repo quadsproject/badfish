@@ -541,7 +541,10 @@ class Badfish:
             raise BadfishException("Failed to communicate with server.")
 
         raw = await response.text("utf-8", "ignore")
-        data = json.loads(raw.strip())
+        try:
+            data = json.loads(raw.strip())
+        except ValueError:
+            raise BadfishException("Error reading response from host.")
         if "Systems" not in data:
             raise BadfishException("Systems resource not found")
 
@@ -551,7 +554,10 @@ class Badfish:
             raise BadfishException("Authorization Error: verify credentials.")
 
         raw = await systems_response.text("utf-8", "ignore")
-        systems_data = json.loads(raw.strip())
+        try:
+            systems_data = json.loads(raw.strip())
+        except ValueError:
+            raise BadfishException("Error reading response from host.")
 
         if systems_data.get("Members"):
             for member in systems_data["Members"]:
@@ -1279,7 +1285,7 @@ class Badfish:
 
         device = await self.get_host_type_boot_device(host_type, _interfaces_path)
 
-        await self.boot_to(device, True)
+        return await self.boot_to(device, True)
 
     async def boot_to_mac(self, mac_address):
         interfaces_endpoints = await self.get_interfaces_endpoints()
@@ -2553,7 +2559,9 @@ class Badfish:
         # Save the exported configuration
         if "SystemConfiguration" in data:
             now = get_now()
-            filename = file_path + now.strftime(f"%Y-%m-%d_%H%M%S_targets_{targets.replace(',', '-')}_export.json")
+            filename = os.path.join(
+                file_path, now.strftime(f"%Y-%m-%d_%H%M%S_targets_{targets.replace(',', '-')}_export.json")
+            )
             with open(filename, "w") as f:
                 f.write(json.dumps(data, indent=4))
             self.logger.info("SCP export completed successfully.")
@@ -3041,9 +3049,11 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
             badfish.logger.info("Executing actions on host: %s" % _host)
 
         if device:
-            await badfish.boot_to(device)
+            if not await badfish.boot_to(device):
+                result = False
         elif boot_to_type:
-            await badfish.boot_to_type(boot_to_type, interfaces_path)
+            if not await badfish.boot_to_type(boot_to_type, interfaces_path):
+                result = False
         elif boot_to_mac:
             await badfish.boot_to_mac(boot_to_mac)
         elif check_boot:
