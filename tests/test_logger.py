@@ -210,6 +210,53 @@ class TestBadfishHandler:
         }
         assert handler.diff() == "{}"
 
+    def test_parse_with_host_uses_structured_data(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.host = "host1.domain"
+        handler.structured["host1"] = {"BootOrder": ["NIC.Integrated.1-1-1"], "HostType": "foreman"}
+        handler.parse()
+        assert handler.output_dict == {
+            "host1.domain": {"BootOrder": ["NIC.Integrated.1-1-1"], "HostType": "foreman"}
+        }
+
+    def test_parse_with_host_missing_message_sets_error_marker(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.host = "host1.domain"
+        handler.parse()
+        assert handler.output_dict == {"unsupported_command": True}
+
+    def test_diff_tolerates_non_dict_host_values(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": "not a dict",
+            "h2": {"a": {"SoftwareId": 1, "Version": "1", "Name": "A"}},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_skips_non_dict_first_host_rows(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": "not a row"},
+            "h2": {"b": {"SoftwareId": 1, "Version": "1", "Name": "B"}},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_skips_non_dict_second_host_rows(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": {"SoftwareId": 1, "Version": "1", "Name": "A"}},
+            "h2": {"b": "not a row"},
+        }
+        assert handler.diff() == "{}"
+
+    def test_diff_skips_software_id_zero(self):
+        handler = BadfishHandler(format_flag=True)
+        handler.output_dict = {
+            "h1": {"a": {"SoftwareId": 0, "Version": "1", "Name": "A"}},
+            "h2": {"b": {"SoftwareId": 0, "Version": "2", "Name": "B"}},
+        }
+        assert handler.diff() == "{}"
+
     def test_output_json_and_yaml(self):
         handler = BadfishHandler(format_flag=True)
         handler.output_dict = {"a": 1, "b": "x"}
