@@ -1,5 +1,9 @@
-from unittest.mock import patch
+import logging
 
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from badfish.main import Badfish
 from tests.config import (
     BLANK_RESP,
     BOOT_MODE_RESP,
@@ -128,3 +132,20 @@ class TestBootTo(TestBase):
         self.set_mock_response(mock_delete, 200, "OK")
         _, err = self.badfish_call()
         assert err == RESPONSE_BOOT_TO_NO_FILE
+
+
+@pytest.mark.asyncio
+async def test_boot_to_type_returns_false_on_no_device(tmp_path):
+    """boot_to_type() must propagate False from boot_to() when no device matches."""
+    logger = MagicMock(spec=logging.Logger)
+    bf = Badfish("test_host", "user", "pass", logger, 1)
+    iface = tmp_path / "idrac_interfaces.yml"
+    iface.write_text("key: value")
+
+    bf.get_host_types_from_yaml = AsyncMock(return_value=["foreman", "director"])
+    bf.get_host_type_boot_device = AsyncMock(return_value=None)
+    bf.boot_to = AsyncMock(return_value=False)
+
+    result = await bf.boot_to_type("foreman", str(iface))
+
+    assert result is False
