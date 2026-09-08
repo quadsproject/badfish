@@ -8,6 +8,9 @@ from tests.config import (
     BLANK_RESP,
     BOOT_MODE_RESP,
     BOOT_SEQ_RESP,
+    DEVICE_HDD_1,
+    DEVICE_NIC_2,
+    render_device_dict,
     BOOT_SEQ_RESPONSE_DIRECTOR,
     INIT_RESP,
     INTERFACES_PATH,
@@ -132,6 +135,33 @@ class TestBootTo(TestBase):
         self.set_mock_response(mock_delete, 200, "OK")
         _, err = self.badfish_call()
         assert err == RESPONSE_BOOT_TO_NO_FILE
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.patch")
+    @patch("aiohttp.ClientSession.get")
+    def test_boot_to_type_no_match(self, mock_get, mock_patch, mock_post, mock_delete):
+        # Boot sequence without the custom type's first device must propagate
+        # the failure so badfish exits nonzero.
+        boot_seq_resp_fmt = BOOT_SEQ_RESP % str(
+            [render_device_dict(0, DEVICE_HDD_1), render_device_dict(1, DEVICE_NIC_2)]
+        )
+        get_resp = [
+            BOOT_MODE_RESP,
+            boot_seq_resp_fmt.replace("'", '"'),
+            BLANK_RESP,
+        ]
+        responses = INIT_RESP + get_resp
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_patch, 200, ["OK"])
+        self.set_mock_response(mock_post, 200, ["OK", JOB_OK_RESP])
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = ["-i", INTERFACES_PATH, self.option_arg, "custom"]
+        _, err = self.badfish_call(mock_host="host01.example.com")
+        assert err == (
+            "- ERROR    - Device NIC.Integrated.1-2-1 does not match any of the "
+            "available boot devices for host host01.example.com\n"
+        )
 
 
 @pytest.mark.asyncio
