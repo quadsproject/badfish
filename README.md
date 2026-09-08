@@ -55,6 +55,7 @@
          * [List Network Interfaces](#list-network-interfaces)
          * [List Memory](#list-memory)
          * [List Processors](#list-processors)
+         * [List GPUs](#list-gpus)
          * [List Serial Number or Service Tag](#list-serial-number-or-service-tag)
          * [Check Virtual Media](#check-virtual-media)
          * [Mount Virtual Media](#mount-virtual-media)
@@ -292,20 +293,20 @@ We will use the custom interface order called **ocp5beta** as an example.
 _Example_ any system you want to boot with a certain custom interface order.
 
 ```
-ocp5beta_fc640_interfaces: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
+ocp5beta_fc640: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
 ```
 
 _Example_ a rack of systems you want to boot with a certain custom interface order.
 
 
 ```
-ocp5beta_f21_fc640_interfaces: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
+ocp5beta_f21_fc640: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
 ```
 
 _Example_ a specific system you want to boot with a certain custom interface order
 
 ```
-ocp5beta_f21_h23_fc640_interfaces: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
+ocp5beta_f21_h23_fc640: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
 ```
 
 Now you can run Badfish against the custom interface order type you have defined, refer to the [custom overrides](#host-type-overrides) on further usage examples.
@@ -491,6 +492,12 @@ badfish -H mgmt-your-server.example.com --ls-memory
 For getting a detailed list of processors you can run ```badfish``` with the ```--ls-processors``` option.
 ```bash
 badfish -H mgmt-your-server.example.com --ls-processors
+```
+
+### List GPUs
+For getting a detailed summary and list of GPU's on the host you can run ```badfish``` with the ```--ls-gpu``` option.
+```bash
+badfish -H mgmt-your-server.example.com --ls-gpu
 ```
 
 ### List Serial Number or Service Tag
@@ -753,11 +760,11 @@ Your usage may vary, this is what our configuration looks like via ```config/idr
 Every other method that requires passing the `-i` argument, is going to parse the key strings from this and look for the most adequate candidate for the given FQDN.
 We format the key strings with the following criteria:
 ```
-{host_type}_[{rack}_[{ULocation}_[{blade}_]]]{model}_interfaces
+{host_type}_[{rack}_[{ULocation}_[{blade}_]]]{model}
 ```
 Additionally we can do a blade only override like:
 ```
-{host_type}_[{blade}_]{model}_interfaces
+{host_type}_[{blade}_]{model}
 ```
 With rack, ULocation and blade being optional in a hierarchical fashion otherwise mandatory with the exception of the blade, as we can now use the blade independently from rack and ULocation. host_type and model values are always mandatory.
 
@@ -765,21 +772,21 @@ With rack, ULocation and blade being optional in a hierarchical fashion otherwis
 
 | Keys defined on interfaces yaml | FQDN | Use boot order |
 | :------------------------------ |:----:| --------------:|
-| director_r620_interfaces         | mgmt-f21-h17-000-r620.domain.com | NO             |
-| director_f21_r620_interfaces     | mgmt-f21-h17-000-r620.domain.com | NO             |
-| director_f21_h17_r620_interfaces | mgmt-f21-h17-000-r620.domain.com | YES            |
+| director_r620         | mgmt-f21-h17-000-r620.domain.com | NO             |
+| director_f21_r620     | mgmt-f21-h17-000-r620.domain.com | NO             |
+| director_f21_h17_r620 | mgmt-f21-h17-000-r620.domain.com | YES            |
 
 | Keys defined on interfaces yaml | FQDN | Use boot order |
 | :------------------------------ |:----:| --------------:|
-| director_r620_interfaces         | mgmt-f21-h18-000-r620.domain.com | NO             |
-| director_f21_r620_interfaces     | mgmt-f21-h18-000-r620.domain.com | YES            |
-| director_f21_h17_r620_interfaces | mgmt-f21-h18-000-r620.domain.com | NO             |
+| director_r620         | mgmt-f21-h18-000-r620.domain.com | NO             |
+| director_f21_r620     | mgmt-f21-h18-000-r620.domain.com | YES            |
+| director_f21_h17_r620 | mgmt-f21-h18-000-r620.domain.com | NO             |
 
 | Keys defined on interfaces yaml | FQDN | Use boot order |
 | :------------------------------ |:----:| --------------:|
-| director_r620_interfaces         | mgmt-f22-h17-000-r620.domain.com | YES            |
-| director_f21_r620_interfaces     | mgmt-f22-h17-000-r620.domain.com | NO             |
-| director_f21_h17_r620_interfaces | mgmt-f22-h17-000-r620.domain.com | NO             |
+| director_r620         | mgmt-f22-h17-000-r620.domain.com | YES            |
+| director_f21_r620     | mgmt-f22-h17-000-r620.domain.com | NO             |
+| director_f21_h17_r620 | mgmt-f22-h17-000-r620.domain.com | NO             |
 
 ## Contributing
 
