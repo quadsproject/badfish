@@ -2,8 +2,6 @@ FROM quay.io/fedora/python-310:latest
 
 USER root
 
-RUN dnf install -y git
-
 COPY . /badfish
 
 WORKDIR /badfish
