@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/quadsproject/badfish/development/image/badfish-original-licensed.small.png" />
+  <img src="https://raw.githubusercontent.com/quadsproject/badfish/master/image/badfish-original-licensed.small.png" />
 </p>
 
 <h2 align="center">The Out-of-Band Wrangler</h2>
@@ -20,13 +20,14 @@
          * [Badfish RPM package](#badfish-rpm-package)
          * [Badfish Standalone CLI](#badfish-standalone-cli)
          * [Badfish Container](#badfish-container)
+         * [Run straight from the repository](#run-straight-from-the-repository)
       * [Usage](#usage)
         * [As Python Library](#as-python-library)
         * [Via Podman](#via-podman)
         * [Via Virtualenv](#via-virtualenv)
         * [Via RPM System Package](#via-rpm-system-package)
       * [Common Operations](#common-operations)
-         * [Use Environment Variables for Secrets](#using-environment-variables-for-secrets)
+         * [Use Environment Variables for Secrets](#use-environment-variables-for-secrets)
          * [Enforcing an OpenStack Director-style interface order](#enforcing-an-openstack-director-style-interface-order)
          * [Enforcing a Foreman-style interface order](#enforcing-a-foreman-style-interface-order)
          * [Enforcing a Custom interface order](#enforcing-a-custom-interface-order)
@@ -34,8 +35,8 @@
          * [Forcing a one time boot to a specific mac address](#forcing-a-one-time-boot-to-a-specific-mac-address)
          * [Forcing a one time boot to a specific type](#forcing-a-one-time-boot-to-a-specific-type)
          * [Forcing a one-time boot to PXE](#forcing-a-one-time-boot-to-pxe)
-         * [Rebooting a System](#rebooting-a-system)
-         * [Power Cycling a System](#power-cycling-a-system)
+         * [Rebooting a system](#rebooting-a-system)
+         * [Power cycling a system](#power-cycling-a-system)
          * [Power State Control](#power-state-control)
          * [Check Power State](#check-power-state)
          * [Get Power Consumed](#get-power-consumed)
@@ -45,6 +46,8 @@
          * [Check current boot order](#check-current-boot-order)
          * [Toggle boot device](#toggle-boot-device)
          * [Variable number of retries](#variable-number-of-retries)
+         * [Set request timeout](#set-request-timeout)
+         * [Skip TLS certificate verification](#skip-tls-certificate-verification)
          * [Firmware inventory](#firmware-inventory)
          * [Delta of firmware inventories](#delta-of-firmware-inventories)
          * [Clear Job Queue](#clear-job-queue)
@@ -66,6 +69,9 @@
          * [Detach Remote Image](#detach-remote-image)
          * [Get SRIOV mode](#get-sriov-mode)
          * [Set SRIOV mode](#set-sriov-mode)
+         * [Get FQDDs for all nics](#get-fqdds-for-all-nics)
+         * [Get NIC attributes](#get-nic-attributes)
+         * [Set NIC attribute](#set-nic-attribute)
          * [Get BIOS attributes](#get-bios-attributes)
          * [Get specific BIOS attribute](#get-specific-bios-attribute)
          * [Set BIOS attribute](#set-bios-attribute)
@@ -79,13 +85,14 @@
          * [Export server configuration profile](#export-server-configuration-profile)
          * [Import server configuration profile](#import-server-configuration-profile)
          * [Bulk actions via text file with list of hosts](#bulk-actions-via-text-file-with-list-of-hosts)
-         * [Verbose Output](#verbose-output)
-         * [Log to File](#log-to-file)
+         * [Verbose output](#verbose-output)
+         * [Log to file](#log-to-file)
          * [Formatted output](#formatted-output)
          * [Redfish emulator (mock iDRAC)](#redfish-emulator-mock-idrac)
       * [iDRAC and Data Format](#idrac-and-data-format)
          * [Dell Foreman and PXE Interface](#dell-foreman-and-pxe-interface)
          * [Host type overrides](#host-type-overrides)
+            * [Example for director type overrides](#example-for-director-type-overrides)
       * [Contributing](#contributing)
       * [Contact](#contact)
 
@@ -102,23 +109,30 @@ We're mostly concentrated on programmatically enforcing interface/device boot or
 ## Features
 * Toggle and save a persistent interface/device boot order on remote system
 * Support for BIOS and EFI modes for interface/device boot operations
-* Perform one-time boot to a specific interface, mac address or device listed for PXE booting
-* Enforce a custom interface boot order
+* Perform one-time boot to a specific interface, mac address or type listed for PXE booting
+* Enforce a custom interface boot order with [rack/U-location/blade overrides](#host-type-overrides)
 * Check current boot order
-* Display current power consumption in watts
-* Reboot host
-* Reset Dell iDRAC
-* View, check and clear Dell iDRAC jobs
-* Revert to factory settings
-* Check/set SRIOV
-* Take a remote screenshot of server KVM console activity (Dell only).
+* Power on/off/cycle, reboot and query power state and power consumption
+* Reset BMCs (Dell iDRAC `--racreset`, Supermicro/HPE `--bmc-reset`)
+* BIOS factory reset
+* View, check and clear BMC job queues
+* Check, mount, unmount and boot to virtual media
+* Dell OpenManage OS deployment remote ISO support (check, boot, detach)
+* Check and set SRIOV mode (Dell only)
+* Get and set BIOS attributes, including bulk changes and BIOS/UEFI mode switching
+* Set and remove BIOS passwords
+* Get and set NIC attributes via FQDD (Dell only)
+* Take a remote screenshot of server KVM console activity (Dell only)
+* Get firmware inventory and delta between two hosts
+* Obtain limited hardware information (CPU, Memory, Interfaces, GPU, Serial/Service Tag)
+* Export and import server configuration profiles with Dell iDRAC SCP
 * Support tokenized authentication
-* Check and set BIOS attributes (e.g. setting UEFI or BIOS mode)
-* Get firmware inventory of installed devices supported by the BMC
-* Check/ummount virtual media en-masse across a set of systems (SuperMicro only)
-* Obtain limited hardware information (CPU, Memory, Interfaces)
+* Use environment variables for credentials
 * Bulk actions via plain text file with list of hosts for parallel execution
+* JSON or YAML formatted output
+* Request timeout, retry and TLS certificate verification controls
 * Logging to a specific path
+* Built-in Redfish emulator (mock iDRAC) for development and testing
 * Containerized Badfish image
 
 ## Requirements
@@ -126,8 +140,8 @@ We're mostly concentrated on programmatically enforcing interface/device boot or
 * (Dell) Firmware version ```2.60.60.60``` or higher
 * Any Redfish IPMI 2.0 support on non-Dell systems
 * BMC administrative account
-* Python >= ```3.8``` or [podman](https://podman.io/getting-started/installation) as a container.
-* python3-devel >= ```3.8``` (If using standalone or RPM package below).
+* Python >= ```3.10``` or [podman](https://podman.io/getting-started/installation) as a container.
+* python3-devel >= ```3.10``` (If using standalone or RPM package below).
 
 ## Setup
 ### Badfish RPM package
@@ -163,6 +177,33 @@ Perhaps the easiest way to run Badfish is with Podman, you can see more usage de
 ```
 podman pull quay.io/quads/badfish
 ```
+
+### Run straight from the repository
+Running Badfish straight from a git checkout is the least recommended way to use it, but you can if you prefer. You need Python >= ```3.10``` and all the libraries from `requirements.txt` installed, either in a virtualenv or as system packages:
+
+* With a virtualenv:
+
+```bash
+git clone https://github.com/quadsproject/badfish && cd badfish
+python3 -m venv bf
+source bf/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+* Or with RPM system packages (or satisfied by your package manager/distribution):
+
+```bash
+sudo dnf install python3-pyyaml python3-aiohttp python3-async-lru python3-rich python3-setuptools python3-build openssl
+```
+
+You can then invoke Badfish straight from the repository by pointing `PYTHONPATH` at the source tree:
+```bash
+PYTHONPATH="./src" python3 src/badfish/main.py -h
+PYTHONPATH="./src" python3 src/badfish/main.py -H mgmt-your-server.example.com --power-state
+```
+> [!NOTE]
+> `openssl` is only needed by the [Redfish emulator](#redfish-emulator-mock-idrac) to generate its TLS certificate, and `python3-setuptools`/`python3-build` are only needed to build or install the package. The `badfish` console command is only available after a full install (see [Badfish Standalone CLI](#badfish-standalone-cli)).
 
 ## Usage
 Badfish can be consumed in several ways after successful installation. Either via the standalone cli tool or as a python library.
@@ -312,7 +353,7 @@ ocp5beta_f21_h23_fc640: NIC.Slot.2-4,NIC.Slot.2-1,NIC.Slot.2-2,NIC.Slot.2-3
 Now you can run Badfish against the custom interface order type you have defined, refer to the [custom overrides](#host-type-overrides) on further usage examples.
 
 ```bash
-src/main.py --host-list /tmp/hosts -u root -p password -i config/idrac_interfaces.yml -t ocp5beta
+badfish --host-list /tmp/hosts -u root -p password -i config/idrac_interfaces.yml -t ocp5beta
 ```
 
 
@@ -375,7 +416,7 @@ Partial Output:
 ### Get Power Consumed
 This displays the current power usage for Dell / Supermicro server(s).
 ```bash
-badfish -H mgmt-your-server.example.com -u root -p --get-power-consumed
+badfish -H mgmt-your-server.example.com --get-power-consumed
 ```
 Partial Output:
 ```
@@ -419,17 +460,29 @@ badfish -H mgmt-your-server.example.com  -i config/idrac_interfaces.yml --check-
 ### Toggle boot device
 If you would like to enable or disable a boot device you can use ```--toggle-boot-device``` argument which takes the device name as input and will toggle the `Enabled` state from True to False and vice versa.
 ```bash
-badfish -H mgmt-your-server.example.com --toggle-boot-device NIC.Integrated.1-3-1```
+badfish -H mgmt-your-server.example.com --toggle-boot-device NIC.Integrated.1-3-1
 ```
 
 ### Variable number of retries
-At certain points during the execution of ```badfish``` the program might come across a non responsive resources and will automatically retry to establish connection. We have included a default value of 15 retries after failed attempts but this can be customized via the ```--retries``` optional argument which takes as input an integer with the number of desired retries.
+At certain points during the execution of ```badfish``` the program might come across a non responsive resources and will automatically retry to establish connection. We have included a default value of 30 retries after failed attempts but this can be customized via the ```--retries``` optional argument which takes as input an integer with the number of desired retries.
 ```bash
 badfish -H mgmt-your-server.example.com  -i config/idrac_interfaces.yml -t foreman --retries 20
 ```
 
+### Set request timeout
+By default every Redfish REST call waits up to 120 seconds to answer (```TIMEOUT``` in `src/badfish/config.py`). You can override that with the ```--timeout``` option, which takes a positive integer number of seconds.
+```bash
+badfish -H mgmt-your-server.example.com --power-state --timeout 60
+```
+
+### Skip TLS certificate verification
+For development and testing against hosts that present self-signed certificates, including the bundled [Redfish emulator](#redfish-emulator-mock-idrac), you can pass ```--insecure``` to disable SSL/TLS certificate verification. Do not use this flag with production BMCs.
+```bash
+badfish -H mgmt-your-server.example.com --insecure --power-state
+```
+
 ### Firmware inventory
-If you would like to get a detailed list of all the devices supported by the BMC you can run ```badfish``` with the ```--firware-inventory``` option which will return a list of devices with additional device info.
+If you would like to get a detailed list of all the devices supported by the BMC you can run ```badfish``` with the ```--firmware-inventory``` option which will return a list of devices with additional device info.
 ```bash
 badfish -H mgmt-your-server.example.com --firmware-inventory
 ```
@@ -563,7 +616,7 @@ badfish -H mgmt-your-server.example.com --get-sriov
 > This is only supported on DELL devices.
 
 ### Set SRIOV mode
-For changing the mode of the SRIOV glabal BIOS attribute, we have included 2 new arguments.
+For changing the mode of the SRIOV global BIOS attribute, we have included 2 new arguments.
 In case the setting is in disabled mode, you can enable it by passing ```--enable-sriov```
 ```bash
 badfish -H mgmt-your-server.example.com --enable-sriov
@@ -580,12 +633,16 @@ To get a list of all FQDDs for all NICs on the server you can run badfish with `
 ```bash
 badfish -H mgmt-your-server.example.com --get-nic-fqdds
 ```
+> [!NOTE]
+> This is only supported on Dell devices.
 
 ### Get NIC attributes
 To get a list of all NIC attributes we can potentially modify (some might be set as read-only), you can run badfish with ```--get-nic-attribute``` passing the desired FQDD and this will return a list off all NIC attributes with their current value set.
 ```bash
 badfish -H mgmt-your-server.example.com --get-nic-attribute NIC.Integrated.1-1-1
 ```
+> [!NOTE]
+> This is only supported on Dell devices.
 
 ### Set NIC attribute
 > [!WARNING]
@@ -595,6 +652,8 @@ To change the value of a NIC attribute you can use ```--set-nic-attribute``` wit
 ```bash
 badfish -H mgmt-your-server.example.com --set-nic-attribute NIC.Integrated.1-1-1 --attribute LegacyBootProto --value PXE
 ```
+> [!NOTE]
+> This is only supported on Dell devices.
 
 ### Get BIOS attributes
 To get a list of all BIOS attributes we can potentially modify (some might be set as read-only), you can run badfish with ```--get-bios-attribute``` alone and this will return a list off all BIOS attributes with their current value set.
@@ -636,7 +695,7 @@ badfish -H mgmt-your-server.example.com --get-bios-attribute --attribute BootMod
 ```bash
 badfish -H mgmt-your-server.example.com --set-bios-attribute --attribute BootMode --value Uefi
 ```
-### Setting BIOS mode
+#### Setting BIOS mode
 ```bash
 badfish -H mgmt-your-server.example.com --set-bios-attribute --attribute BootMode --value Bios
 ```
@@ -650,11 +709,13 @@ If you would like to get a screenshot with the current state of the server you c
 ```bash
 badfish -H mgmt-your-server.example.com --screenshot
 ```
+> [!NOTE]
+> This is only supported on Dell devices.
 
 ### Targets for server configuration profile
-If you want to get a list of allowed targets for SCP export or import you can get that with the `--get-scp-targets` command, takes either `Export` or `Import` as an argument.
+If you want to get a list of allowed targets for SCP export or import you can get that with the `--get-scp-targets` command, pass either `Export` or `Import` as an argument.
 ```
-badfish -H mgmt-your-server.example.com --get-scp-targets (Export | Import)
+badfish -H mgmt-your-server.example.com --get-scp-targets Export
 ```
 > [!NOTE]
 > This is only supported on Dell devices.
@@ -683,7 +744,9 @@ badfish --host-list /tmp/bad-hosts --clear-jobs
 ```
 
 ### Verbose output
-If you would like to see a more detailed output on console you can use the ```--verbose``` option and get a additional debug logs. > [!NOTE] this is the default log level for the ```--log``` argument.
+If you would like to see a more detailed output on console you can use the ```--verbose``` option and get a additional debug logs.
+> [!NOTE]
+> `--log` uses the same log level: INFO by default, DEBUG with `--verbose`.
 ```bash
 badfish -H mgmt-your-server.example.com  -i config/idrac_interfaces.yml -t foreman --verbose
 ```
@@ -703,7 +766,7 @@ If you would like to easier query some information listed by badfish, you can te
 - `--check-virtual-media`
 - `--power-state`.
 ```bash
-badfish -H mgmt-your-server.example.com --output json/yaml --firmware-inventory
+badfish -H mgmt-your-server.example.com --output json --firmware-inventory
 ```
 
 ### Redfish emulator (mock iDRAC)
@@ -715,7 +778,7 @@ Run the emulator as a persistent server:
 badfish --redfish-emulator --port 8443
 ```
 
-It serves HTTPS on `127.0.0.1:8443` using a self-signed certificate generated on first run (never committed to the repo or shipped in the wheel/RPM; see `src/badfish/emulator/certs/README.md`). Point a second badfish instance at it like any BMC, and pass `--insecure` to skip certificate verification, the self-signed cert will not validate otherwise:
+It serves HTTPS on `127.0.0.1:8443` using a self-signed certificate generated on first run (never committed to the repo or shipped in the wheel/RPM; see `src/badfish/emulator/certs/README.md`). The keypair lives in `$XDG_CACHE_HOME/badfish/emulator/` by default; point `BADFISH_EMULATOR_CERTS` at a directory containing `emulator.crt`/`emulator.key` (or where they should be created) to relocate it. Point a second badfish instance at the emulator like any BMC, and pass `--insecure` to skip certificate verification, the self-signed cert will not validate otherwise:
 
 ```bash
 badfish -H 127.0.0.1:8443 -u quads -p quads --insecure --power-state
@@ -733,7 +796,7 @@ Currently covered: session/token auth, user and account management with role-bas
 > [!NOTE]
 > This is a development tool, not a security boundary. The certificate (generated at runtime, unique per install) and default credentials exist so CI and laptops can spin up a mock iDRAC with zero setup.
 
-Resource templates live in `src/badfish/emulator/templates/` and are served by URI path, the same store that vendor mockup bundles (for example DMTF DSP2043) can feed as fetch support for Dell and SuperMicro trees lands.
+Resource templates live in `src/badfish/emulator/templates/` and are served by URI path. The emulator does not fetch vendor mockup bundles, for example DMTF DSP2043; templates are loaded from that directory at startup.
 
 ## iDRAC and Data Format
 
@@ -768,6 +831,12 @@ Additionally we can do a blade only override like:
 ```
 With rack, ULocation and blade being optional in a hierarchical fashion otherwise mandatory with the exception of the blade, as we can now use the blade independently from rack and ULocation. host_type and model values are always mandatory.
 
+By default the rack, ULocation and blade components are parsed out of the hostname (format `mgmt-{rack}-{uloc}-{blade}-{model}`). You can override them on the command line with `--rack`, `--uloc` and `--blade` when the hostname doesn't follow that layout:
+```bash
+badfish -H mgmt-f21-h17-000-r620.example.com -i config/idrac_interfaces.yml -t director --blade 001
+```
+The `--blade` override produces a blade only key (`director_001_r620` in the example), while `--rack` and `--uloc` override the corresponding components when resolving hierarchical keys.
+
 #### Example for director type overrides:
 
 | Keys defined on interfaces yaml | FQDN | Use boot order |
@@ -799,5 +868,5 @@ Please refer to our contributing [guide](CONTRIBUTING.md).
 ## Contact
 
 * You can find us on IRC in `#badfish` (or `#quads`) on `irc.libera.chat` if you have questions or need help.
-* [Click here](https://https://web.libera.chat/?channels=#quads) to join in your browser.
+* [Click here](https://web.libera.chat/?channels=#quads) to join in your browser.
 
