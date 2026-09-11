@@ -3129,15 +3129,18 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
         elif clear_jobs:
             await badfish.clear_job_queue(force)
         elif check_job:
-            await badfish.check_schedule_job_status(check_job)
+            if await badfish.check_schedule_job_status(check_job) is False:
+                result = False
         elif list_jobs:
             await badfish.list_job_queue()
         elif host_type:
             await badfish.change_boot(host_type, interfaces_path, pxe)
         elif rac_reset:
-            await badfish.reset_idrac(wait=wait)
+            if await badfish.reset_idrac(wait=wait) is False:
+                result = False
         elif bmc_reset:
-            await badfish.reset_bmc()
+            if await badfish.reset_bmc() is False:
+                result = False
         elif factory_reset:
             await badfish.reset_bios()
         elif power_state:
@@ -3153,13 +3156,16 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
         elif reboot_only:
             await badfish.reboot_server()
         elif power_consumed_watts:
-            await badfish.get_power_consumed_watts()
+            if await badfish.get_power_consumed_watts() is False:
+                result = False
         elif list_interfaces:
-            await badfish.list_interfaces()
+            if await badfish.list_interfaces() is False:
+                result = False
         elif list_processors:
             await badfish.list_processors()
         elif list_gpu:
-            await badfish.list_gpu()
+            if await badfish.list_gpu() is False:
+                result = False
         elif list_memory:
             await badfish.list_memory()
         elif list_serial:
@@ -3167,9 +3173,11 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
         elif check_virtual_media:
             await badfish.check_virtual_media()
         elif mount_virtual_media:
-            await badfish.mount_virtual_media(mount_virtual_media)
+            if await badfish.mount_virtual_media(mount_virtual_media) is False:
+                result = False
         elif unmount_virtual_media:
-            await badfish.unmount_virtual_media()
+            if await badfish.unmount_virtual_media() is False:
+                result = False
         elif boot_to_virtual_media:
             await badfish.boot_to_virtual_media()
         elif check_remote_image:
@@ -3197,26 +3205,35 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
             attributes = bios_attributes if attribute_value else {attribute: value}
             await badfish.set_bios_attribute(attributes)
         elif set_bios_password:
-            await badfish.set_bios_password(old_password, new_password)
+            if await badfish.set_bios_password(old_password, new_password) is False:
+                result = False
         elif remove_bios_password:
-            await badfish.remove_bios_password(old_password)
+            if await badfish.remove_bios_password(old_password) is False:
+                result = False
         elif screenshot:
             await badfish.take_screenshot()
         elif get_scp_targets:
-            await badfish.get_scp_targets(get_scp_targets)
+            if await badfish.get_scp_targets(get_scp_targets) is False:
+                result = False
         elif export_scp:
-            await badfish.export_scp(export_scp, scp_targets, scp_include_read_only)
+            if await badfish.export_scp(export_scp, scp_targets, scp_include_read_only) is False:
+                result = False
         elif import_scp:
-            await badfish.import_scp(import_scp, scp_targets)
+            if await badfish.import_scp(import_scp, scp_targets) is False:
+                result = False
         elif get_nic_fqdds:
-            await badfish.get_nic_fqdds()
+            if await badfish.get_nic_fqdds() is False:
+                result = False
         elif get_nic_attribute:
             if attribute:
-                await badfish.get_nic_attribute_info(get_nic_attribute, attribute)
+                if await badfish.get_nic_attribute_info(get_nic_attribute, attribute) is False:
+                    result = False
             else:
-                await badfish.get_nic_attribute(get_nic_attribute)
+                if await badfish.get_nic_attribute(get_nic_attribute) is False:
+                    result = False
         elif set_nic_attribute:
-            await badfish.set_nic_attribute(set_nic_attribute, attribute, value)
+            if await badfish.set_nic_attribute(set_nic_attribute, attribute, value) is False:
+                result = False
 
         if pxe and not host_type:
             await badfish.set_next_boot_pxe()
