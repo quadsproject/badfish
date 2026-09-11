@@ -21,7 +21,7 @@ from badfish.config import TIMEOUT
 from badfish.helpers import get_now
 from badfish.helpers.parser import parse_arguments
 from badfish.helpers.logger import BadfishLogger
-from badfish.helpers.http_client import HTTPClient
+from badfish.helpers.http_client import HTTPClient, load_json
 from badfish.helpers.exceptions import BadfishException
 from badfish.helpers.progress import polling_progress
 
@@ -364,7 +364,7 @@ class Badfish:
                 raise BadfishException("Boot order modification is not supported by this host.")
 
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "boot order")
             if "Attributes" in data:
                 try:
                     self.boot_devices = data["Attributes"][_boot_seq]
@@ -403,7 +403,7 @@ class Badfish:
         reset_types = []
         if _response:
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "reset types")
             if "Actions" not in data:
                 self.logger.warning("Actions resource not found")
             else:
@@ -469,7 +469,7 @@ class Badfish:
             raise BadfishException(f"Failed to authenticate. Verify your credentials for {self.host}")
 
         raw = await response.text("utf-8", "ignore")
-        data = json.loads(raw.strip())
+        data = load_json(raw, "session")
         try:
             redfish_version = int(data["RedfishVersion"].replace(".", ""))
         except KeyError:
@@ -575,7 +575,7 @@ class Badfish:
             raise BadfishException("Failed to communicate with server.")
 
         raw = await response.text("utf-8", "ignore")
-        data = json.loads(raw.strip())
+        data = load_json(raw, "managers")
         oem = data.get("Oem") or {}
         if "Dell" in oem:
             self.vendor = "Dell"
@@ -594,7 +594,7 @@ class Badfish:
         managers_data = None
         if managers_response:
             raw = await managers_response.text("utf-8", "ignore")
-            managers_data = json.loads(raw.strip())
+            managers_data = load_json(raw, "managers")
         if managers_data and managers_data.get("Members"):
             for member in managers_data["Members"]:
                 managers_service = member["@odata.id"]
@@ -647,7 +647,7 @@ class Badfish:
         status = _response.status
         if status == 200:
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "power state")
         else:
             raise BadfishException("Couldn't get power state.")
 
@@ -917,7 +917,7 @@ class Badfish:
         if _response:
             status_code = _response.status
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "job status")
 
             if status_code == 200:
                 await asyncio.sleep(10)
@@ -947,7 +947,7 @@ class Badfish:
 
                 status_code = _response.status
                 raw = await _response.text("utf-8", "ignore")
-                data = json.loads(raw.strip())
+                data = load_json(raw, "job status")
                 if status_code != 200:
                     self.logger.error(f"Command failed to check job status, return code is {status_code}")
                     self.logger.debug(f"Extended Info Message: {data}")
@@ -1483,7 +1483,7 @@ class Badfish:
                 continue
 
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "firmware inventory")
             row = {k: v for k, v in data.items() if not any(s in k for s in _SKIP)}
             rows.append(row)
 
@@ -2603,7 +2603,7 @@ class Badfish:
         uri = "%s%s/Jobs/%s" % (self.host_uri, self.manager_resource, job_id)
         response = await self.get_request(uri)
         raw = await response.text("utf-8", "ignore")
-        data = json.loads(raw.strip())
+        data = load_json(raw, "export job")
 
         # Check if job failed
         if data.get("JobState") in ["Failed", "CompletedWithErrors"]:
@@ -2618,7 +2618,7 @@ class Badfish:
             uri = "%s/redfish/v1/TaskService/Tasks/%s" % (self.host_uri, job_id)
             response = await self.get_request(uri)
             raw = await response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "export job")
 
         # Save the exported configuration
         if "SystemConfiguration" in data:
@@ -2670,7 +2670,7 @@ class Badfish:
             uri = "%s/redfish/v1/TaskService/Tasks/%s" % (self.host_uri, job_id)
             response = await self.get_request(uri)
             raw = await response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "import job")
             if response.status in [200, 202]:
                 await asyncio.sleep(1)
             else:

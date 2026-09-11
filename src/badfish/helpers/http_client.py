@@ -9,6 +9,14 @@ from async_lru import alru_cache
 from badfish.helpers.exceptions import BadfishException
 
 
+def load_json(raw: str, context: str = "response") -> Any:
+    """Parse a JSON response, raising BadfishException on malformed input."""
+    try:
+        return json.loads(raw.strip())
+    except (ValueError, TypeError) as ex:
+        raise BadfishException(f"Error reading {context} from host.") from ex
+
+
 class HTTPClient:
 
     def __init__(
@@ -95,38 +103,46 @@ class HTTPClient:
             return None
 
     async def get_raw(self, uri: str, _continue: bool = False, _get_token: bool = False):
-        try:
-            async with self.semaphore:
-                async with aiohttp.ClientSession() as session:
-                    if not _get_token:
-                        async with session.get(
-                            uri,
-                            headers={"X-Auth-Token": self.token} if self.token else {},
-                            ssl=False if self.insecure else True,
-                            timeout=self.timeout,
-                        ) as _response:
-                            await _response.read()
-                    else:
-                        async with session.get(
-                            uri,
-                            auth=aiohttp.BasicAuth(self.username, self.password),
-                            ssl=False if self.insecure else True,
-                            timeout=self.timeout,
-                        ) as _response:
-                            await _response.read()
-        except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
-            if _continue:
-                return
-            self._handle_ssl_error(ex)
-        except (Exception, TimeoutError) as ex:
-            if _continue:
-                return
-            else:
+        for _attempt in range(self.retries):
+            try:
+                async with self.semaphore:
+                    async with aiohttp.ClientSession() as session:
+                        if not _get_token:
+                            async with session.get(
+                                uri,
+                                headers={"X-Auth-Token": self.token} if self.token else {},
+                                ssl=False if self.insecure else True,
+                                timeout=self.timeout,
+                            ) as _response:
+                                await _response.read()
+                        else:
+                            async with session.get(
+                                uri,
+                                auth=aiohttp.BasicAuth(self.username, self.password),
+                                ssl=False if self.insecure else True,
+                                timeout=self.timeout,
+                            ) as _response:
+                                await _response.read()
+                return _response
+            except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
+                if _continue:
+                    return
+                self._handle_ssl_error(ex)
+            except (aiohttp.ClientError, TimeoutError, OSError) as ex:
+                self.logger.debug(f"HTTPClient get_raw attempt {_attempt + 1}/{self.retries} failed: {ex}")
+                if _continue:
+                    return
+                if _attempt < self.retries - 1:
+                    await asyncio.sleep(1)
+            except Exception as ex:
+                if _continue:
+                    return
                 self.logger.debug(f"HTTPClient get_raw exception: {ex}")
                 self.logger.debug(f"Exception type: {type(ex)}")
                 raise BadfishException("Failed to communicate with server.")
-
-        return _response
+        if _continue:
+            return
+        raise BadfishException("Failed to communicate with server.")
 
     async def post_request(
         self,
@@ -214,7 +230,7 @@ class HTTPClient:
             raise BadfishException(f"Failed to communicate with {self.host}")
 
         raw = await _response.text("utf-8", "ignore")
-        data = json.loads(raw.strip())
+        data = load_json(raw)
 
         redfish_version = int(data["RedfishVersion"].replace(".", ""))
         session_uri = None
