@@ -136,10 +136,11 @@ jobs:
             - name: Build and Push
               run: |
                   # Added --no-cache to ensure fresh layers
-                  podman build --no-cache -t quay.io/quads/badfish:master .
+                  # Retry pulls/pushes to ride out transient Quay CDN EOFs
+                  podman build --no-cache --retry=5 --retry-delay=15s -t quay.io/quads/badfish:master .
                   podman tag quay.io/quads/badfish:master quay.io/quads/badfish:latest
-                  podman push quay.io/quads/badfish:master
-                  podman push quay.io/quads/badfish:latest
+                  podman push --retry=5 --retry-delay=15s quay.io/quads/badfish:master
+                  podman push --retry=5 --retry-delay=15s quay.io/quads/badfish:latest
 
     # ------------------------------------------------------------------
     # JOB 4: AUR PUBLISH
