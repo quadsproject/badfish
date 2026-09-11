@@ -18,6 +18,7 @@
       * [Requirements](#requirements)
       * [Setup](#setup)
          * [Badfish RPM package](#badfish-rpm-package)
+            * [Arch Linux and Derivatives](#arch-linux-and-derivatives)
          * [Badfish Standalone CLI](#badfish-standalone-cli)
          * [Badfish Container](#badfish-container)
          * [Run straight from the repository](#run-straight-from-the-repository)
@@ -156,6 +157,19 @@ Active RPM releases:
 
 > [!NOTE]
 > RHEL and derivatives (Rocky, Alma, etc) should use [containers](#badfish-container) instead due to missing libs/dependencies.
+
+#### Arch Linux and Derivatives
+Arch Linux and derivatives (Manjaro, EndeavourOS, etc) can install Badfish from the [AUR](https://aur.archlinux.org/packages/badfish):
+
+```bash
+yay -S badfish
+```
+
+If using `paru` instead:
+
+```bash
+paru -S badfish
+```
 
 ### Badfish Standalone CLI
 ```bash
