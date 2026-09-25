@@ -22,7 +22,7 @@ from badfish.helpers import get_now
 from badfish.helpers.parser import parse_arguments
 from badfish.helpers.logger import BadfishLogger
 from badfish.helpers.http_client import HTTPClient, load_json
-from badfish.helpers.exceptions import BadfishException
+from badfish.helpers.exceptions import BadfishException, ResourceNotFound
 from badfish.helpers.progress import polling_progress
 
 from logging import (
@@ -112,6 +112,7 @@ class Badfish:
         self.bios_uri = None
         self.boot_devices = None
         self.boot_seq_attr = None
+        self.boot_mode_readable = True
         self.boot_sources_resource = None
         self.jobs_resource = None
         self.dell_job_service_resource = None
@@ -237,8 +238,11 @@ class Badfish:
         attribute = "BootMode"
         bios_boot_mode = await self.get_bios_attribute(attribute)
         if not bios_boot_mode:
+            self.boot_mode_readable = False
             self.logger.warning("Assuming boot mode is Bios.")
             bios_boot_mode = "Bios"
+        else:
+            self.boot_mode_readable = True
         self.logger.debug("Current boot mode: %s" % bios_boot_mode)
         return bios_boot_mode
 
@@ -365,22 +369,14 @@ class Badfish:
         under the OEM ``{system}/Oem/Dell/DellBootSources`` resource. Return
         whichever the host exposes, caching the result.
         """
-        if self.boot_sources_resource:
-            return self.boot_sources_resource
-
         candidates = ["%s/BootSources" % self.system_resource]
         if self.vendor == "Dell":
             candidates.append("%s/Oem/Dell/DellBootSources" % self.system_resource)
-
-        for candidate in candidates:
-            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
-            if _response and _response.status == 200:
-                self.boot_sources_resource = candidate
-                return candidate
-            if _response:
-                self.logger.debug(await _response.text())
-
-        raise BadfishException("Boot order modification is not supported by this host.")
+        return await self._find_resource(
+            candidates,
+            "boot_sources_resource",
+            "Boot order modification is not supported by this host.",
+        )
 
     async def _find_resource(self, candidates, cache_attr, error_message):
         """Return the first candidate that responds 200, caching it in ``cache_attr``.
@@ -395,8 +391,16 @@ class Badfish:
             if _response and _response.status == 200:
                 setattr(self, cache_attr, candidate)
                 return candidate
+            if _response and _response.status in (401, 403):
+                self.logger.error("Authorization error probing %s (status %s).", candidate, _response.status)
+                raise BadfishException
+            if _response and _response.status >= 500:
+                self.logger.error("Server error probing %s (status %s).", candidate, _response.status)
+                raise BadfishException
+            if _response:
+                self.logger.debug("Probing %s returned status %s.", candidate, _response.status)
 
-        raise BadfishException(error_message)
+        raise ResourceNotFound(error_message)
 
     async def find_jobs_resource(self):
         """Resolve the Dell job collection path.
@@ -471,15 +475,15 @@ class Badfish:
             data = json.loads(raw.strip())
             if "Attributes" in data:
                 attributes = data["Attributes"]
-                # If the boot-mode-derived sequence is empty (e.g. the BootMode
-                # attribute could not be read and we wrongly assumed Bios on a
-                # UEFI host), fall back to the populated sequence. Without this,
-                # an empty device list makes get_host_type() vacuously "match"
-                # and change-boot silently reports the host already matches.
+                # If the boot-mode-derived sequence is empty because the BootMode
+                # attribute could not be read (we wrongly assumed Bios on a UEFI
+                # host), fall back to the populated sequence. Only do this when
+                # the BootMode read actually failed: a genuine Bios host with an
+                # empty BootSeq must not be retargeted to UefiBootSeq.
                 if attributes.get(_boot_seq):
                     self.boot_seq_attr = _boot_seq
                     self.boot_devices = attributes[_boot_seq]
-                else:
+                elif not self.boot_mode_readable:
                     fallback = "UefiBootSeq" if _boot_seq == "BootSeq" else "BootSeq"
                     if attributes.get(fallback):
                         self.boot_seq_attr = fallback
@@ -488,13 +492,21 @@ class Badfish:
                         raise BadfishException(
                             "The boot mode does not match the boot sequence. Try again in a few minutes."
                         )
+                else:
+                    raise BadfishException(
+                        "The boot mode does not match the boot sequence. Try again in a few minutes."
+                    )
             else:
                 self.logger.debug(data)
                 raise BadfishException("Boot order modification is not supported by this host.")
 
     async def get_job_queue(self):
         self.logger.debug("Getting job queue.")
-        _url = "%s%s" % (self.host_uri, await self.find_jobs_resource())
+        try:
+            _url = "%s%s" % (self.host_uri, await self.find_jobs_resource())
+        except ResourceNotFound:
+            self.logger.debug("Job collection not supported by this host.")
+            return []
         _response = await self.get_request(_url)
 
         data = await _response.text("utf-8", "ignore")
@@ -915,7 +927,7 @@ class Badfish:
     async def check_supported_idrac_version(self):
         try:
             _url = "%s%s" % (self.host_uri, await self.find_dell_job_service_resource())
-        except BadfishException:
+        except ResourceNotFound:
             self.logger.warning("iDRAC version installed does not support DellJobService")
             return False
         _response = await self.get_request(_url)
