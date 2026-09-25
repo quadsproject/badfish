@@ -1138,7 +1138,7 @@ class Badfish:
             self.logger.error("Could not verify final attribute value.")
             return False
 
-    async def send_reset(self, reset_type):
+    async def send_reset(self, reset_type, *, log_already_on=True):
         _url = "%s%s/Actions/ComputerSystem.Reset" % (
             self.host_uri,
             self.system_resource,
@@ -1153,7 +1153,9 @@ class Badfish:
             await asyncio.sleep(10)
             return True
         elif status_code == 409:
-            self.logger.warning("Command failed to %s server, host appears to be already in that state." % reset_type)
+            if reset_type != "On" or log_already_on:
+                log = self.logger.info if reset_type == "On" else self.logger.warning
+                log("Command failed to %s server, host appears to be already in that state." % reset_type)
         else:
             self.logger.error("Command failed to %s server, status code is: %s." % (reset_type, status_code))
 
@@ -1170,9 +1172,13 @@ class Badfish:
 
         self.logger.debug("Rebooting server: %s." % self.host)
         power_state = await self.get_power_state()
+        self.logger.info("Current server state is %s." % power_state.upper())
+        controller = "iDRAC" if self.vendor == "Dell" else "BMC"
         if power_state.lower() == "on":
+            graceful_restart_accepted = False
             if graceful:
                 response = await self.send_reset(reset_type)
+                graceful_restart_accepted = response and reset_type == "GracefulRestart"
 
                 if not response:
                     host_down = await self.polling_host_state("Off")
@@ -1186,9 +1192,15 @@ class Badfish:
             host_not_down = await self.polling_host_state("Down", False)
 
             if host_not_down:
-                await self.send_reset("On")
+                power_on_accepted = await self.send_reset("On", log_already_on=not graceful_restart_accepted)
+                if not power_on_accepted and graceful_restart_accepted:
+                    self.logger.info(
+                        "A graceful restart request was already sent to the %s; the server may still be restarting."
+                        % controller
+                    )
 
         elif power_state.lower() == "off":
+            self.logger.info("Issuing a power-on request to the %s." % controller)
             await self.send_reset("On")
         return True
 

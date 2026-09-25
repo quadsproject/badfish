@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 from tests.config import (
@@ -5,6 +6,8 @@ from tests.config import (
     INIT_RESP,
     RESET_TYPE_NG_RESP,
     RESET_TYPE_RESP,
+    RESPONSE_REBOOT_ONLY_ALREADY_ON,
+    RESPONSE_REBOOT_ONLY_FAILED_GRACE_AND_FORCE,
     RESPONSE_REBOOT_ONLY_FAILED_SEND_RESET,
     RESPONSE_REBOOT_ONLY_SUCCESS,
     RESPONSE_REBOOT_ONLY_SUCCESS_WITH_NG_RT,
@@ -13,6 +16,14 @@ from tests.config import (
     STATE_ON_RESP,
 )
 from tests.test_base import TestBase
+
+
+def _reset_types_sent(mock_post):
+    return [
+        json.loads(call.kwargs["data"])["ResetType"]
+        for call in mock_post.call_args_list
+        if call.args[0].endswith("/Actions/ComputerSystem.Reset")
+    ]
 
 
 class TestRebootOnly(TestBase):
@@ -35,6 +46,80 @@ class TestRebootOnly(TestBase):
         self.args = [self.option_arg]
         _, err = self.badfish_call()
         assert err == RESPONSE_REBOOT_ONLY_SUCCESS
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_reboot_only_already_on_after_graceful_restart(self, mock_get, mock_post, mock_delete):
+        responses = INIT_RESP + [RESET_TYPE_RESP, STATE_ON_RESP, STATE_OFF_RESP]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, [200, 204, 409], "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = [self.option_arg]
+
+        _, err = self.badfish_call()
+
+        assert err == RESPONSE_REBOOT_ONLY_ALREADY_ON
+        assert _reset_types_sent(mock_post) == ["GracefulRestart", "On"]
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_reboot_only_powered_off(self, mock_get, mock_post, mock_delete):
+        responses = INIT_RESP + [RESET_TYPE_RESP, STATE_OFF_RESP]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, [200, 204], "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = [self.option_arg]
+
+        _, err = self.badfish_call()
+
+        assert err == (
+            "- INFO     - Current server state is OFF.\n"
+            "- INFO     - Issuing a power-on request to the iDRAC.\n"
+            "- INFO     - Command passed to On server, code return is 204.\n"
+        )
+        assert _reset_types_sent(mock_post) == ["On"]
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_power_cycle_already_on(self, mock_get, mock_post, mock_delete):
+        responses = INIT_RESP + [RESET_TYPE_RESP, STATE_ON_RESP, STATE_OFF_RESP]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, [200, 204, 409], "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = ["--power-cycle"]
+
+        _, err = self.badfish_call()
+
+        assert err == (
+            "- INFO     - Current server state is ON.\n"
+            "- INFO     - Command passed to ForceOff server, code return is 204.\n"
+            "- INFO     - Polling for host state: Not Down\n"
+            "- INFO     - Command failed to On server, host appears to be already in that state.\n"
+        )
+        assert _reset_types_sent(mock_post) == ["ForceOff", "On"]
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_reboot_only_already_on_with_alternate_reset_type(self, mock_get, mock_post, mock_delete):
+        responses = INIT_RESP + [RESET_TYPE_NG_RESP, STATE_ON_RESP, STATE_OFF_RESP]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, [200, 204, 409], "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        self.args = [self.option_arg]
+
+        _, err = self.badfish_call()
+
+        assert err == (
+            "- INFO     - Current server state is ON.\n"
+            "- INFO     - Command passed to RestartNow server, code return is 204.\n"
+            "- INFO     - Polling for host state: Not Down\n"
+            "- INFO     - Command failed to On server, host appears to be already in that state.\n"
+        )
+        assert _reset_types_sent(mock_post) == ["RestartNow", "On"]
 
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.post")
@@ -90,7 +175,6 @@ class TestRebootOnly(TestBase):
         _, err = self.badfish_call()
         assert err == RESPONSE_REBOOT_ONLY_SUCCESS_WITH_NG_RT
 
-    @patch("badfish.main.RETRIES", 0)
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.get")
     @patch("aiohttp.ClientSession.post")
@@ -100,12 +184,9 @@ class TestRebootOnly(TestBase):
             STATE_ON_RESP,
         ]
         self.set_mock_response(mock_get, 200, responses)
-        # Provide enough POST responses to handle the entire reboot sequence
-        self.set_mock_response(mock_post, [200] + [409] * 10, ["OK"] + ["Conflict"] * 10, True)
+        self.set_mock_response(mock_post, [200, 409, 409, 409], "Conflict", True)
         self.set_mock_response(mock_delete, 200, "OK")
-        self.args = [self.option_arg]
+        self.args = [self.option_arg, "--retries", "1"]
         _, err = self.badfish_call()
-        # The test should complete without StopIteration and show reboot failures
-        # Checking for key failure indicators rather than exact match
-        assert "Command failed to GracefulRestart" in err
-        assert "Command failed to ForceOff" in err
+        assert err == RESPONSE_REBOOT_ONLY_FAILED_GRACE_AND_FORCE
+        assert _reset_types_sent(mock_post) == ["GracefulRestart", "ForceOff", "On"]
