@@ -30,8 +30,31 @@ Run black to fix the two lint errors that fail the repo-wide Black check on deve
 
 fixes: https://github.com/quadsproject/badfish/issues/556
 
+- Black-format emulator.py and main.py
+  ([`be5f9b2`](https://github.com/quadsproject/badfish/commit/be5f9b2666f0b473a7ea59feddbc20a77eb8efc5))
+
+Run black to fix the two lint errors that fail the repo-wide Black check on development: expand the
+  state.jobs[job_id] dict literal (over 120 chars) and collapse the parenthesized uloc expression to
+  one line.
+
+fixes: https://github.com/quadsproject/badfish/issues/556
+
 - Build container images from checked-out code, not cloned master
   ([`d6e5653`](https://github.com/quadsproject/badfish/commit/d6e565396dd86073aee967e197bdf0bd241fee5f))
+
+The default Dockerfile ran 'git clone https://github.com/quadsproject/badfish' with no -b flag, so
+  it pulled the repository default branch (master) regardless of what the CI checkout had. The
+  development-build workflow therefore published a master/v1.6.0 image as
+  quay.io/quads/badfish:development, which lacked development features like the built-in Redfish
+  emulator.
+
+Build from the already-checked-out context instead (COPY . /badfish + WORKDIR /badfish). Both
+  development-build and production-release workflows already actions/checkout the target ref, so
+  this removes the default-branch dependence and the clone race. Added a minimal .dockerignore to
+  keep .git and python caches out of the build context.
+
+- Build container images from checked-out code, not cloned master
+  ([`c1298cf`](https://github.com/quadsproject/badfish/commit/c1298cf1ac8552fbc436ae9fadecb8b8fc345180))
 
 The default Dockerfile ran 'git clone https://github.com/quadsproject/badfish' with no -b flag, so
   it pulled the repository default branch (master) regardless of what the CI checkout had. The
@@ -54,8 +77,25 @@ The emulator subcommand shells out to openssl to generate its self-signed TLS ce
 Add openssl to BuildRequires (for %check) and Requires (runtime), and to the dnf install list in the
   rpmlint workflow.
 
+- Declare openssl dep so RPM %check can run the emulator tests
+  ([`77ba663`](https://github.com/quadsproject/badfish/commit/77ba6636ebf341996f3aa2efd590016cbf80b3b9))
+
+The emulator subcommand shells out to openssl to generate its self-signed TLS cert on first run.
+  Without openssl in BuildRequires/Requires the rpmbuild %check step (pytest) fails the 3 emulator
+  tests with 'openssl not found'.
+
+Add openssl to BuildRequires (for %check) and Requires (runtime), and to the dnf install list in the
+  rpmlint workflow.
+
 - Drop unused git install and stale Dockerfiles
   ([`e5e9946`](https://github.com/quadsproject/badfish/commit/e5e99468c674db404513a6540dea40b82f8b64a9))
+
+The image now builds from the checked-out context instead of cloning the repo, so git is unused at
+  build and runtime. Dockerfile_dev and Dockerfile_local are not referenced by any workflow or
+  documentation, so remove them.
+
+- Drop unused git install and stale Dockerfiles
+  ([`ade92f4`](https://github.com/quadsproject/badfish/commit/ade92f4d8c377fe3dbdb1650e5bfa9f12f47248a))
 
 The image now builds from the checked-out context instead of cloning the repo, so git is unused at
   build and runtime. Dockerfile_dev and Dockerfile_local are not referenced by any workflow or
@@ -73,8 +113,31 @@ The image now builds from the checked-out context instead of cloning the repo, s
 
 Fixes #559 #560 #565 #567 #570
 
+- Harden formatted output parsing and check-boot JSON
+  ([`b202433`](https://github.com/quadsproject/badfish/commit/b2024339312046c061baa1989eab310b9d0203dc))
+
+- F3: timestamp-string YAML loader at all four parse() load sites so zero-date ReleaseDate
+  (0000-00-00T00:00:00Z) stays a string instead of raising ValueError in yaml.safe_load; ValueError
+  added to outer except. - F4: defensive diff() tolerates 0/1 hosts, missing SoftwareId/Version,
+  compares Version via str() and avoids zip truncation. - F9: BadfishLogger creates the parent dir
+  of --log before FileHandler. - F11/F13: emit structured check-boot data (BootOrder/HostType) and
+  guard parse() against missing messages so -o json --check-boot is sensible.
+
+Fixes #559 #560 #565 #567 #570
+
 - Harden multi-attribute BIOS parsing and skip no-op PATCH
   ([`ef571da`](https://github.com/quadsproject/badfish/commit/ef571daf3cb6dda78794c4e5f32cb32e89bc3d3c))
+
+Follow-up from independent and adversarial review of the PR: - reject duplicate --attribute-value
+  names instead of silently last-wins - error when --attribute-value is mixed with legacy
+  --attribute/--value - require --set-bios-attribute when --attribute-value is used (no silent
+  no-op) - validate pairs before any session/network work so bad syntax fails fast - resolve
+  attributes to the registry canonical AttributeName before the current-value lookup and PATCH (odd
+  casing no longer misreported) - skip the PATCH and reboot entirely when every value is already in
+  the desired state - pin single-PATCH / no-PATCH counts and add edge-case tests
+
+- Harden multi-attribute BIOS parsing and skip no-op PATCH
+  ([`dfe08d3`](https://github.com/quadsproject/badfish/commit/dfe08d38f328ac236702c081a2ce5b637460630d))
 
 Follow-up from independent and adversarial review of the PR: - reject duplicate --attribute-value
   names instead of silently last-wins - error when --attribute-value is mixed with legacy
@@ -101,6 +164,23 @@ Port of quadsproject/quads#723 (commit 0dd27bb4): - find_virtual_media_resource(
 
 fixes: https://github.com/quadsproject/quads/issues/723
 
+- Idrac10 virtual media and OS deployment paths
+  ([`e2f00c6`](https://github.com/quadsproject/badfish/commit/e2f00c61acbf0b8c1b500ca9a24390a0c7b381b0))
+
+Dell 17G hosts (R670, iDRAC10) fail virtual media cleanup and OS deployment with "Could not unmount
+  virtual media" and "iDRAC version installed doesn't support DellOSDeploymentService". iDRAC10
+  dropped the legacy /redfish/v1/Dell OEM namespace and no longer serves the VirtualMedia collection
+  under the manager resource.
+
+Port of quadsproject/quads#723 (commit 0dd27bb4): - find_virtual_media_resource() resolves
+  VirtualMedia from the manager then system resource, caching the result. Supermicro keeps VM1. -
+  is_optical_media() and get_virtual_media_device() replace the [x for x in vm_config if "CD" in
+  x][0] filter; a miss raises BadfishException instead of IndexError. -
+  find_os_deployment_resource() tries {system}/Oem/Dell/... then the legacy /redfish/v1/Dell path,
+  caching the result. The OS deployment action URIs now use the resolved resource.
+
+fixes: https://github.com/quadsproject/quads/issues/723
+
 - Propagate boot-to failures, join export path, guard init JSON parses
   ([`babdc03`](https://github.com/quadsproject/badfish/commit/babdc03b12f2a4219f8a2f528ea93e97d75d0129))
 
@@ -108,8 +188,24 @@ boot_to_type returns its boot_to result and execute_badfish folds a False result
   status. export_scp joins the export filename to the target directory instead of concatenating.
   find_systems_resource wraps both response JSON parses in the standard BadfishException guard.
 
+- Propagate boot-to failures, join export path, guard init JSON parses
+  ([`a0b0a99`](https://github.com/quadsproject/badfish/commit/a0b0a992f87bffc0011f07c2c05b0c4168eebb30))
+
+boot_to_type returns its boot_to result and execute_badfish folds a False result into the exit
+  status. export_scp joins the export filename to the target directory instead of concatenating.
+  find_systems_resource wraps both response JSON parses in the standard BadfishException guard.
+
 - Reject case-insensitive duplicates and guard a missing BIOS registry
   ([`b13332c`](https://github.com/quadsproject/badfish/commit/b13332cfe2817cd733976c112ca21c463e6ff390))
+
+The multi-attribute path silently dropped a value when two attributes differed only by case (e.g.
+  ProcC1E and procc1e both mapped to the same canonical name). Make the duplicate check
+  case-insensitive, narrow canonical-name resolution to the registry AttributeName field only, and
+  raise a catchable BadfishException when the BMC does not expose a BIOS registry instead of
+  crashing with a TypeError.
+
+- Reject case-insensitive duplicates and guard a missing BIOS registry
+  ([`b0d82b7`](https://github.com/quadsproject/badfish/commit/b0d82b7fcda1bb72f989da9963085225d29ead0d))
 
 The multi-attribute path silently dropped a value when two attributes differed only by case (e.g.
   ProcC1E and procc1e both mapped to the same canonical name). Make the duplicate check
@@ -127,8 +223,28 @@ The emulator bundled a self-signed private key in SCM and in the wheel/RPM
   Existing certs are reused; the key is written 0600. Tests cover generation, reuse,
   missing-openssl, default-dir resolution, and the live daemon now exercises runtime generation.
 
+- **emulator**: Generate self-signed TLS cert at runtime, drop shipped private key
+  ([`98be331`](https://github.com/quadsproject/badfish/commit/98be33189618e2f4451853d8aa3ca7e8fde44695))
+
+The emulator bundled a self-signed private key in SCM and in the wheel/RPM
+  (emulator/certs/emulator.key). This removes it from the repo and from package data, and generates
+  a fresh per-install localhost keypair on first run under $XDG_CACHE_HOME/badfish/emulator
+  (overridable via BADFISH_EMULATOR_CERTS), so no private key ever sits in public artifacts.
+  Existing certs are reused; the key is written 0600. Tests cover generation, reuse,
+  missing-openssl, default-dir resolution, and the live daemon now exercises runtime generation.
+
 - **emulator**: Serve advertised ServiceRoot resources and harden the user store
   ([`8f45d9d`](https://github.com/quadsproject/badfish/commit/8f45d9d182e1800234d9e69f2090464a7c978f0a))
+
+The ServiceRoot advertised Chassis, TaskService and Registries, but all three 404'd, which would
+  break any Redfish client that walks the link tree. Serve a Chassis collection, a TaskService
+  resource with its Tasks collection, and a Registries collection. The user store is now written
+  0600 (not world-readable under a default umask), uses a unique temp filename so concurrent
+  instances don't race, and the throwaway default /tmp path is no longer trusted: a pre-existing
+  file there (e.g. a locally planted Administrator) is ignored.
+
+- **emulator**: Serve advertised ServiceRoot resources and harden the user store
+  ([`751994f`](https://github.com/quadsproject/badfish/commit/751994fb1985e6eb823c176554f56d7d99aa6a92))
 
 The ServiceRoot advertised Chassis, TaskService and Registries, but all three 404'd, which would
   break any Redfish client that walks the link tree. Serve a Chassis collection, a TaskService
@@ -156,8 +272,37 @@ Findings from independent + contrarian review of this PR, all verified live:
   live-RBAC demotion, restart override, end-to-end drives
   get_network_adapters/get_nic_fqdds/get_nic_attribute/detach/export_scp.
 
+- **emulator**: Serve missing network collections, wire SCP export, close RBAC gaps
+  ([`2045405`](https://github.com/quadsproject/badfish/commit/2045405b510d6a34e7dc7fd0379840e1948e57e3))
+
+Findings from independent + contrarian review of this PR, all verified live:
+
+- NetworkPorts / NetworkDeviceFunctions collections now served (were 500: _STATIC_URI referenced
+  templates that don't exist). badfish walks these in get_network_adapters / get_nic_fqdds. -
+  DellNetworkAttributes also registered on the Chassis tree (client uses /Chassis/... not
+  /Systems/... for get/set_nic_attribute). - SCP export job now carries SystemConfiguration so
+  export_scp completes instead of timing out; task template gains Oem.Dell.Message so import_scp's
+  progress poll reads cleanly. - DetachISOImage returns 200 like real iDRAC (badfish only accepts
+  200). - Last enabled Administrator cannot be demoted via RoleId (previously only disable/delete
+  were guarded); roles re-resolved live so demotions take effect on existing sessions instead of a
+  login-time snapshot. - Pending restart power-on task is cancelled by any later reset. -
+  NetworkPorts member resources served; firmware member ids singularized; reused certs re-applied
+  0600. - Tests: network collections + Chassis NIC attribute set, export/import payload asserts,
+  live-RBAC demotion, restart override, end-to-end drives
+  get_network_adapters/get_nic_fqdds/get_nic_attribute/detach/export_scp.
+
 - **emulator**: Set member Id so boot-to-mac resolves devices
   ([`c181672`](https://github.com/quadsproject/badfish/commit/c181672ac4fbdb393ce17150107ab31e24dc0227))
+
+The EthernetInterface template renders an empty Id, so badfish's boot_to_mac sees device=None and
+  raises 'MAC Address does not match any of the existing'. Populate the member Id from its resource
+  id so collection members (EthernetInterface, Processor, Memory) carry a real identity and
+  boot-to-mac resolves the device.
+
+Fixes #564
+
+- **emulator**: Set member Id so boot-to-mac resolves devices
+  ([`dcee876`](https://github.com/quadsproject/badfish/commit/dcee876a1052ae86d2c7eac4be1b4e697d8fe680))
 
 The EthernetInterface template renders an empty Id, so badfish's boot_to_mac sees device=None and
   raises 'MAC Address does not match any of the existing'. Populate the member Id from its resource
@@ -178,11 +323,33 @@ Adds an rpmlint make target under rpm/ that builds the SRPM and binary noarch RP
 
 fixes: https://github.com/quadsproject/badfish/issues/312
 
+- Add rpmlint to CI for RPM hygiene
+  ([`2178bc1`](https://github.com/quadsproject/badfish/commit/2178bc19da482d3380b3606449b50c4d9eed3c45))
+
+Adds an rpmlint make target under rpm/ that builds the SRPM and binary noarch RPM and lints the spec
+  plus both artifacts, and a GHA workflow that runs it in a fedora:latest container on PRs and
+  pushes. Pivots the #312 investigation away from rpminspect, which targets binary packages and
+  deviation analysis that do not apply to a noarch pure Python package.
+
+fixes: https://github.com/quadsproject/badfish/issues/312
+
 - Bump CI Python to a support version.
   ([`1b4cd5b`](https://github.com/quadsproject/badfish/commit/1b4cd5b7a81f2446536f4dd176da111ef87d81c4))
 
+- Bump CI Python to a support version.
+  ([`c43f4d0`](https://github.com/quadsproject/badfish/commit/c43f4d0450f9902f726f16abe8d1d8dfbc61c28a))
+
 - Rpmlint CI also re-runs on commits, drop stray exec bit
   ([`a75bf61`](https://github.com/quadsproject/badfish/commit/a75bf6155063855ea1864f041aa07bb9b370d5ac))
+
+Follow-up from independent review of the PR: - run the rpmlint gate on synchronize and reopened, not
+  just opened/edited, so new commits pushed to the PR are actually linted - install rpm-build
+  explicitly (previously only transitive) - add rpmbuild/ to rpm cleanup and .gitignore - mark the
+  rpmlint target .PHONY - jobs get permissions: contents: read - main.py lost its shebang earlier;
+  clear the stale executable bit (module is not a script; entry point is the badfish console script)
+
+- Rpmlint CI also re-runs on commits, drop stray exec bit
+  ([`b66c28c`](https://github.com/quadsproject/badfish/commit/b66c28ced54abf209cacc97b46db0227ade5f4e0))
 
 Follow-up from independent review of the PR: - run the rpmlint gate on synchronize and reopened, not
   just opened/edited, so new commits pushed to the PR are actually linted - install rpm-build
@@ -200,8 +367,24 @@ The rpm build derives VERSION from setup.py, but the paths filter omitted it, so
   built badfish-.tar.gz with empty @VERSION@ substitutions; the version is now asserted non-empty
   before building.
 
+- Gate rpmlint on setup.py and fail loudly on an empty package version
+  ([`61f0c0a`](https://github.com/quadsproject/badfish/commit/61f0c0ab04a5b09b5b7a9cd8f8831e285a9fd448))
+
+The rpm build derives VERSION from setup.py, but the paths filter omitted it, so a setup.py-only
+  change would not re-trigger the gate. Also, if setuptools is unimportable the Makefile silently
+  built badfish-.tar.gz with empty @VERSION@ substitutions; the version is now asserted non-empty
+  before building.
+
 - Only run the dev Quay publish from the canonical repo
   ([`400fd9c`](https://github.com/quadsproject/badfish/commit/400fd9cd30d01508110eadd57c7083841190728f))
+
+Forks don't have the QUAY_USERNAME/QUAY_API_TOKEN secrets, so the Development Build workflow dies at
+  podman login on every fork push (empty password -> 'inappropriate ioctl for device'). Gate the
+  quay_dev job to this repo so forks skip it and the dev image is still published from
+  quadsproject/badfish exactly as before.
+
+- Only run the dev Quay publish from the canonical repo
+  ([`83e6026`](https://github.com/quadsproject/badfish/commit/83e60267f465c0187f7daaba724ed6daefd3e8dd))
 
 Forks don't have the QUAY_USERNAME/QUAY_API_TOKEN secrets, so the Development Build workflow dies at
   podman login on every fork push (empty password -> 'inappropriate ioctl for device'). Gate the
@@ -211,8 +394,17 @@ Forks don't have the QUAY_USERNAME/QUAY_API_TOKEN secrets, so the Development Bu
 - Re-run tox and lint on PR synchronize events
   ([`d373f09`](https://github.com/quadsproject/badfish/commit/d373f09258c21e15801d70f15532ecbc0d394574))
 
+- Re-run tox and lint on PR synchronize events
+  ([`3a8d12a`](https://github.com/quadsproject/badfish/commit/3a8d12ae58f2ef6284ff83cd0407840518c4b1c7))
+
 - Skip rpmlint on docs-only PRs and cancel stale runs
   ([`145e564`](https://github.com/quadsproject/badfish/commit/145e5648d140790611632d3ddda712d4ebab91f2))
+
+paths filter keeps the RPM hygiene gate to packaging-related changes; concurrency group cancels
+  superseded runs instead of queueing them.
+
+- Skip rpmlint on docs-only PRs and cancel stale runs
+  ([`5649dd3`](https://github.com/quadsproject/badfish/commit/5649dd3d0972712ab0d0a53fe1d25f262ec5a42c))
 
 paths filter keeps the RPM hygiene gate to packaging-related changes; concurrency group cancels
   superseded runs instead of queueing them.
@@ -226,8 +418,23 @@ Add a Common Operations section and TOC entry for the --ls-gpu flag. Correct the
   format spec and all examples to match the shipped idrac_interfaces.yml keys, which use no
   _interfaces suffix.
 
+- Document --ls-gpu and correct interface-key naming
+  ([`e79e293`](https://github.com/quadsproject/badfish/commit/e79e2938db6e2b0ad26befafccef068646f726f7))
+
+Add a Common Operations section and TOC entry for the --ls-gpu flag. Correct the interface-key
+  format spec and all examples to match the shipped idrac_interfaces.yml keys, which use no
+  _interfaces suffix.
+
 - Sync README with current badfish feature set
   ([`a39074b`](https://github.com/quadsproject/badfish/commit/a39074bcb9d8dbc37a1f098db1812fe9c42358d3))
+
+Full documentation sweep against the development branch codebase: fix TOC structure and anchors,
+  document missing CLI options (--timeout, --insecure, --rack, --uloc, --blade), refresh the
+  features and requirements lists, fix broken examples and typos, and update Redfish emulator
+  documentation.
+
+- Sync README with current badfish feature set
+  ([`7054006`](https://github.com/quadsproject/badfish/commit/7054006422f306e397803a78796760a8b278361e))
 
 Full documentation sweep against the development branch codebase: fix TOC structure and anchors,
   document missing CLI options (--timeout, --insecure, --rack, --uloc, --blade), refresh the
@@ -241,8 +448,16 @@ Full documentation sweep against the development branch codebase: fix TOC struct
 
 fixes #416
 
+- Add --rack, --uloc, --blade CLI arguments for explicit host location
+  ([`30d6b5f`](https://github.com/quadsproject/badfish/commit/30d6b5f088248974f6120e681f1c717063485945))
+
+fixes #416
+
 - Add AUR package and CI publishing
   ([`7f4d70e`](https://github.com/quadsproject/badfish/commit/7f4d70e44954879e19d9e6482174167e422dfc8c))
+
+- Add AUR package and CI publishing
+  ([`41f0685`](https://github.com/quadsproject/badfish/commit/41f06850f026c3525a825620892497ab77771df7))
 
 - Support setting multiple BIOS attributes in one invocation
   ([`c129012`](https://github.com/quadsproject/badfish/commit/c1290127d76052ea0386674241ddd98b5e5777e4))
@@ -256,8 +471,39 @@ The accepted-value check is reset per attribute so an invalid value is not maske
 
 fixes: https://github.com/quadsproject/badfish/issues/393
 
+- Support setting multiple BIOS attributes in one invocation
+  ([`1f07abe`](https://github.com/quadsproject/badfish/commit/1f07abead37393e6dafd0d362972021b42529168))
+
+The --set-bios-attribute path now accepts a repeatable --attribute-value option taking
+  attribute=value pairs, so multiple BIOS attributes are staged and applied in a single operation
+  and one reboot. Existing --attribute/--value usage is unchanged.
+
+The accepted-value check is reset per attribute so an invalid value is not masked by an earlier
+  accepted one, and accepted values are sent using the registry's canonical casing.
+
+fixes: https://github.com/quadsproject/badfish/issues/393
+
 - **emulator**: Accountservice user management with role-based RBAC
   ([`8890a54`](https://github.com/quadsproject/badfish/commit/8890a54231b41fbe53db558ac6d82bf899317ea8))
+
+Adds the Redfish AccountService surface to the mock iDRAC: a JSON-backed user store (created at
+  runtime, /tmp by default, BADFISH_EMULATOR_USERS to relocate), roles
+  ReadOnly/Operator/Administrator, per-role authorization on mutating requests, and the
+  last-enabled-Administrator guard. Users can be created, edited, removed and have passwords changed
+  over the API, so future badfish user/RBAC client work has a stable target.
+
+The store stays a flat JSON file rather than sqlite on purpose: the emulator is a temporal testing
+  fixture, not a persistent service, and JSON keeps the state human-inspectable and aligned with the
+  DMTF/sushy mockup convention. sqlite would be stdlib-safe too, but its durability/concurrency
+  advantages are precisely what this throwaway scope does not need.
+
+Also ships the account_service and account templates (previously missing), warts the e2e test off
+  the shared /tmp default store, and declares template and cert package_data so the emulator
+  actually runs from an installed wheel or RPM (templates were previously omitted from the build
+  entirely).
+
+- **emulator**: Accountservice user management with role-based RBAC
+  ([`4759852`](https://github.com/quadsproject/badfish/commit/4759852ce4bfe60cb959499503e2925afc6f5f0c))
 
 Adds the Redfish AccountService surface to the mock iDRAC: a JSON-backed user store (created at
   runtime, /tmp by default, BADFISH_EMULATOR_USERS to relocate), roles
@@ -301,8 +547,44 @@ Tests: unit coverage of the API surface plus an end-to-end test that
 
 runs the real badfish client against a live emulator over TLS.
 
+- **emulator**: Add built-in Redfish emulator
+  ([`e6ab7fc`](https://github.com/quadsproject/badfish/commit/e6ab7fc56fa8346c4a4fed99f6044065d88e5a06))
+
+Adds a mock iDRAC server so badfish can be developed and tested without bare metal. Run with
+  "badfish --redfish-emulator --port 8443"; it always runs as a persistent server until interrupted.
+
+Design: static resource shapes live as JSON templates under
+
+src/badfish/emulator/templates, served over HTTPS by a small aiohttp app with an in-memory fake
+  driver holding mutable system state. Architecture is inspired by the sushy-tools emulator
+  (OpenStack, Apache-2.0), written independently for badfish under GPL-3.0-or-later.
+
+Covers the surface badfish actually talks to: session/token auth, power and reset, one-shot boot and
+  boot order, BIOS registry and attributes, jobs queue, virtual media, firmware inventory,
+  processor/memory/network inventory, the Dell OS deployment service and SCP targets, and the Dell
+  network attribute registry. Screenshot and network ISO actions report "not supported" so badfish
+  degrades gracefully.
+
+Default credentials are quads/quads (override with BADFISH_EMULATOR_USER and
+  BADFISH_EMULATOR_PASSWORD). TLS uses a bundled self-signed test certificate, so clients should
+  pass --insecure.
+
+Tests: unit coverage of the API surface plus an end-to-end test that
+
+runs the real badfish client against a live emulator over TLS.
+
 - **emulator**: Jobs run then complete, unknown tasks 404
   ([`08910da`](https://github.com/quadsproject/badfish/commit/08910dab37f9bf4e2815de16eb402d9bd0fb4daf))
+
+Per maintainer direction on review follow-ups: - Jobs report Running/0% on the first read, then
+  Completed/100% on the next, so badfish's poll-and-retry job loops exercise a real lifecycle
+  instead of instant success. The job-creation POST body renders without consuming a read so the
+  first client poll sees the running state. - Import tasks are now tracked;
+  TaskService/Tasks/<unknown> 404s like real iDRAC (badfish only polls tasks it created via SCP
+  import). - RBAC intentionally left permissive: Operator may run SCP/job actions.
+
+- **emulator**: Jobs run then complete, unknown tasks 404
+  ([`daf3549`](https://github.com/quadsproject/badfish/commit/daf3549cbf9852e1c4a3dfad215ae13112ebe175))
 
 Per maintainer direction on review follow-ups: - Jobs report Running/0% on the first read, then
   Completed/100% on the next, so badfish's poll-and-retry job loops exercise a real lifecycle
@@ -320,8 +602,25 @@ Grafuls (review): the nested loop was O(entries x attributes). Build a lowercase
   AttributeName map once, then resolve each supplied attribute with one lookup. Behavior unchanged
   (38 BIOS tests pass).
 
+- Canonicalize BIOS attribute names in a single pass
+  ([`dfe95c2`](https://github.com/quadsproject/badfish/commit/dfe95c2fa3f4956ada16ce5305817765cebe4b92))
+
+Grafuls (review): the nested loop was O(entries x attributes). Build a lowercase->canonical
+  AttributeName map once, then resolve each supplied attribute with one lookup. Behavior unchanged
+  (38 BIOS tests pass).
+
 - **emulator**: Data-driven collections, shared body parser, job id helper
   ([`545a217`](https://github.com/quadsproject/badfish/commit/545a2176b7a734e116183f3dfe5ad65ef48620f3))
+
+Make _collection_uri data-driven (open/closed: a new collection is a row in _COLLECTIONS, not a new
+  branch), centralize the malformed-JSON 400 handling in _read_body (was 8 duplicated blocks), and
+  factor the JID_ generation into _next_job_id (was 3 duplicated blocks). The extended flag for
+  splitting the 919-line god-module into multiple files was deliberately deferred: the independent
+  review judged a single file defensible for a dev-only mock, the module's helpers are referenced
+  directly by the tests, and a physical split would churn tests and package_data for little gain.
+
+- **emulator**: Data-driven collections, shared body parser, job id helper
+  ([`98fa638`](https://github.com/quadsproject/badfish/commit/98fa6383c68863ee9244cc931ae8e3061d88707a))
 
 Make _collection_uri data-driven (open/closed: a new collection is a row in _COLLECTIONS, not a new
   branch), centralize the malformed-JSON 400 handling in _read_body (was 8 duplicated blocks), and
@@ -335,11 +634,31 @@ Make _collection_uri data-driven (open/closed: a new collection is a row in _COL
 - Cover boot-to-type no-match exit path
   ([`68dcee3`](https://github.com/quadsproject/badfish/commit/68dcee3604d419ca5ad1e0bbf44de808c8c55e55))
 
+- Cover boot-to-type no-match exit path
+  ([`47f0e72`](https://github.com/quadsproject/badfish/commit/47f0e72c603279ad763331fd8ec757e6f2d30d9a))
+
 - Cover structured parse guard and defensive diff branches
   ([`f8462a7`](https://github.com/quadsproject/badfish/commit/f8462a7c6f3671ad055f60eb7b8fb9569a91858d))
 
+- Cover structured parse guard and defensive diff branches
+  ([`801736f`](https://github.com/quadsproject/badfish/commit/801736fd23f0ea2703238845821b406740080582))
+
 - **emulator**: Lift patch coverage past the codecov target
   ([`9f67459`](https://github.com/quadsproject/badfish/commit/9f6745934f0e6ae9352e88ac024c2d81b11d8721))
+
+Codecov patch coverage on the new emulator surface was 74.45% against a 93.43% target, pulling the
+  PR check red. Adds targeted tests for the member collections (NIC/CPU/DIMM), session and registry
+  resources, malformed-JSON 400s on every JSON reader, ChangePassword and account PATCH/DELETE error
+  paths, reset variants and BIOS/Manager actions, the Dell OEM endpoints (job queue, OS deployment,
+  SCP import/export, screenshot), PATCH/DELETE fallthroughs, garbage Basic auth, corrupt-store
+  recovery, and a live run_daemon smoke test plus the main() routing branch.
+
+Two small correctness fixes surfaced while chasing coverage: the chassis Power consumption was dead
+  code (shadowed by the static URI map), so it never varied with power state, and run_daemon now
+  returns web.run_app() so callers can drive it. Patch coverage is now ~99%.
+
+- **emulator**: Lift patch coverage past the codecov target
+  ([`3908c54`](https://github.com/quadsproject/badfish/commit/3908c542a643f5ede5d4ec21979d7bd6ac404134))
 
 Codecov patch coverage on the new emulator surface was 74.45% against a 93.43% target, pulling the
   PR check red. Adds targeted tests for the member collections (NIC/CPU/DIMM), session and registry
