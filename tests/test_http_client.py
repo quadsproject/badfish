@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import aiohttp
 import pytest
 
-from badfish.helpers.http_client import HTTPClient
+from badfish.helpers.http_client import HTTPClient, load_json
 from badfish.helpers.exceptions import BadfishException
 
 
@@ -115,6 +115,46 @@ async def test_get_raw_exception_raises(mock_get):
     with pytest.raises(BadfishException):
         await client.get_raw("https://x")
     assert any("Failed to communicate" not in m for m in logger.debug_msgs)  # debug captured
+
+
+@pytest.mark.asyncio
+async def test_get_raw_retries_then_succeeds():
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, insecure=False, retries=3)
+    with patch("aiohttp.ClientSession.get") as mock_get:
+        set_mock_response(mock_get, 200, "{}")
+        real_return = mock_get.return_value
+        calls = {"n": 0}
+
+        def transient(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise aiohttp.ClientConnectionError("transient failure")
+            return real_return
+
+        mock_get.side_effect = transient
+        resp = await client.get_raw("https://x")
+        assert resp.status == 200
+        assert calls["n"] == 3
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get", side_effect=aiohttp.ClientConnectionError("down"))
+async def test_get_raw_retries_exhausted_raises(mock_get):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, insecure=False, retries=3)
+    with pytest.raises(BadfishException):
+        await client.get_raw("https://x")
+    assert mock_get.call_count == 3
+
+
+def test_load_json_valid_returns_parsed():
+    assert load_json('{"a": 1}') == {"a": 1}
+
+
+def test_load_json_raises_on_invalid_json():
+    with pytest.raises(BadfishException, match="Error reading response from host."):
+        load_json("not-json")
 
 
 @pytest.mark.asyncio

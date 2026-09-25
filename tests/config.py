@@ -131,25 +131,36 @@ RESPONSE_BOOT_TO_BAD_MAC = "- ERROR    - MAC Address does not match any of the e
 
 # test_reboot_only
 RESPONSE_REBOOT_ONLY_SUCCESS = (
+    "- INFO     - Current server state is ON.\n"
     "- INFO     - Command passed to GracefulRestart server, code return is 204.\n"
     "- INFO     - Polling for host state: Not Down\n"
     "- INFO     - Command passed to On server, code return is 204.\n"
 )
+RESPONSE_REBOOT_ONLY_ALREADY_ON = (
+    "- INFO     - Current server state is ON.\n"
+    "- INFO     - Command passed to GracefulRestart server, code return is 204.\n"
+    "- INFO     - Polling for host state: Not Down\n"
+    "- INFO     - A graceful restart request was already sent to the iDRAC; the server may still be restarting.\n"
+)
 RESPONSE_REBOOT_ONLY_FAILED_SEND_RESET = (
+    "- INFO     - Current server state is ON.\n"
     "- ERROR    - Command failed to GracefulRestart server, status code is: 400.\n"
     "- ERROR    - Error reading response from host.\n"
 )
 RESPONSE_REBOOT_ONLY_SUCCESS_WITH_NG_RT = (
+    "- INFO     - Current server state is ON.\n"
     "- INFO     - Command passed to RestartNow server, code return is 204.\n"
     "- INFO     - Polling for host state: Not Down\n"
     "- INFO     - Command passed to On server, code return is 204.\n"
 )
 RESPONSE_REBOOT_ONLY_FAILED_GRACE_AND_FORCE = (
+    "- INFO     - Current server state is ON.\n"
     "- WARNING  - Command failed to GracefulRestart server, host appears to be already in that state.\n"
     "- INFO     - Polling for host state: Off\n"
     "- WARNING  - Unable to graceful shutdown the server, will perform forced shutdown now.\n"
     "- WARNING  - Command failed to ForceOff server, host appears to be already in that state.\n"
     "- INFO     - Polling for host state: Not Down\n"
+    "- INFO     - Command failed to On server, host appears to be already in that state.\n"
 )
 
 # test_power
@@ -160,7 +171,7 @@ RESPONSE_POWER_OFF_ALREADY = (
     "- WARNING  - Command failed to ForceOff server, host appears to be already in that state.\n"
 )
 RESPONSE_POWER_OFF_MISS_STATE = "- ERROR    - Power state not found. Try to racreset.\n"
-RESPONSE_POWER_ON_NOT = "- WARNING  - Command failed to On server, host appears to be already in that state.\n"
+RESPONSE_POWER_ON_NOT = "- INFO     - Command failed to On server, host appears to be already in that state.\n"
 RESPONSE_POWER_OFF_NONE = "- WARNING  - Power state appears to be already set to 'off'.\n"
 # test_power_consumed_watts
 POWER_CONSUMED_RESP = '{"PowerControl":[{"PowerConsumedWatts":"69"}]}'
@@ -191,8 +202,6 @@ RESPONSE_CHANGE_BOOT_WITH_BIOS_WARNINGS = (
     "- WARNING  - Assuming boot mode is Bios.\n"
     f"- WARNING  - Job queue already cleared for iDRAC {MOCK_HOST}, DELETE command will not "
     "execute.\n"
-    "- WARNING  - Could not retrieve Bios Attributes.\n"
-    "- WARNING  - Assuming boot mode is Bios.\n"
     "- WARNING  - Could not retrieve Bios Attributes.\n"
     "- WARNING  - Assuming boot mode is Bios.\n"
     "- WARNING  - Actions resource not found\n"
@@ -927,6 +936,8 @@ VMEDIA_REMOTE_DETACH_FAIL = "- ERROR    - Command failed to detach remote mounte
 BIOS_PASS_SET_GOOD = f"""\
 - INFO     - Command passed to set BIOS password.
 - WARNING  - Host will now be rebooted for changes to take place.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - INFO     - JobID: {JOB_ID}
 - INFO     - Name: Task
@@ -936,18 +947,17 @@ BIOS_PASS_SET_GOOD = f"""\
 BIOS_PASS_SET_MISS_ARG = """\
 - ERROR    - Missing argument: `--new-password`
 """
-BIOS_PASS_RM_GOOD = (
-    """\
+BIOS_PASS_RM_GOOD = """\
 - INFO     - Command passed to set BIOS password.
 - WARNING  - Host will now be rebooted for changes to take place.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - INFO     - JobID: %s
 - INFO     - Name: Task
 - INFO     - Message: Job completed successfully.
 - INFO     - PercentComplete: 100
-"""
-    % JOB_ID
-)
+""" % JOB_ID
 BIOS_PASS_RM_MISS_ARG = """\
 - ERROR    - Missing argument: `--old-password`
 """
@@ -958,12 +968,16 @@ BIOS_PASS_CHANGE_CMD_FAILED = (
 BIOS_PASS_SET_CHECK_JOB_STATUS_BAD_CODE = (
     "- INFO     - Command passed to set BIOS password.\n"
     "- WARNING  - Host will now be rebooted for changes to take place.\n"
+    "- INFO     - Current server state is OFF.\n"
+    "- INFO     - Issuing a power-on request to the iDRAC.\n"
     "- INFO     - Command passed to On server, code return is 200.\n"
     "- WARNING  - Job status response missing Message field\n"
 )
 BIOS_PASS_SET_CHECK_JOB_STATUS_FAIL_MSG = (
     "- INFO     - Command passed to set BIOS password.\n"
     "- WARNING  - Host will now be rebooted for changes to take place.\n"
+    "- INFO     - Current server state is OFF.\n"
+    "- INFO     - Issuing a power-on request to the iDRAC.\n"
     "- INFO     - Command passed to On server, code return is 200.\n"
 )
 CHECK_JOB_STATUS_FAIL_MSG = '{"Message": "Fail"}'
@@ -1047,29 +1061,24 @@ BIOS_RESPONSE_MULTI = '{"Attributes":{"%s": "%s", "%s": "%s"}}' % (
 )
 BIOS_SET_OK = """\
 - INFO     - Command passed to set BIOS attribute pending values.
+- INFO     - Current server state is ON.
 - INFO     - Command passed to GracefulRestart server, code return is 200.
 - INFO     - Polling for host state: Not Down
 - INFO     - Command passed to On server, code return is 200.
 """
-BIOS_SET_BAD_VALUE = (
-    """\
+BIOS_SET_BAD_VALUE = """\
 - WARNING  - List of accepted values for '%s': ['Enabled', 'Disabled']
 - ERROR    - Value not accepted
-"""
-    % ATTRIBUTE_OK
-)
+""" % ATTRIBUTE_OK
 BIOS_SET_BAD_ATTR = """\
 - WARNING  - Could not retrieve Bios Attributes.
 - ERROR    - NotThere not found. Please check attribute name.
 - ERROR    - Attribute not found
 """
-BIOS_SET_MULTI_BAD_VALUE = (
-    """\
+BIOS_SET_MULTI_BAD_VALUE = """\
 - WARNING  - List of accepted values for '%s': ['Uefi', 'Bios']
 - ERROR    - Value not accepted
-"""
-    % ATTRIBUTE_OK_2
-)
+""" % ATTRIBUTE_OK_2
 BIOS_SET_MULTI_BAD_PAIR = """\
 - ERROR    - Invalid attribute/value pair supplied: ProcC1E
 """
@@ -1090,13 +1099,10 @@ BIOS_GET_ONE_OK = """\
 - INFO     - WarningText: None
 - INFO     - WriteOnly: False
 """
-BIOS_GET_ONE_BAD = (
-    """\
+BIOS_GET_ONE_BAD = """\
 - WARNING  - Could not retrieve Bios Attributes.
 - ERROR    - Unable to locate the Bios attribute: %s
-"""
-    % ATTRIBUTE_BAD
-)
+""" % ATTRIBUTE_BAD
 NEXT_BOOT_PXE_OK = '- INFO     - PATCH command passed to set next boot onetime boot device to: "Pxe".\n'
 NEXT_BOOT_PXE_BAD = (
     "- ERROR    - Command failed, error code is 400.\n" "- ERROR    - Error reading response from host.\n"
@@ -2364,6 +2370,8 @@ RESPONSE_SET_NIC_ATTR_ALREADY_OK = "- WARNING  - This attribute already is set t
 RESPONSE_SET_NIC_ATTR_OK = """\
 - INFO     - Patch command to set network attribute values and create next reboot job PASSED.
 - WARNING  - No job ID returned in Location header. Changes may not persist after reboot.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - WARNING  - Configuration change submitted but job monitoring was not possible. Please manually verify attribute value persisted after reboot.
 """
@@ -2392,6 +2400,7 @@ RESPONSE_SET_NIC_ATTR_RETRY_NOT_OK = """\
 - INFO     - Patch command to set network attribute values and create next reboot job PASSED.
 - WARNING  - No job ID returned in Location header. Changes may not persist after reboot.
 - WARNING  - Actions resource not found
+- INFO     - Current server state is ON.
 - INFO     - Command passed to GracefulRestart server, code return is 200.
 - INFO     - Polling for host state: Not Down
 - INFO     - Command passed to On server, code return is 200.
@@ -2530,6 +2539,8 @@ RESPONSE_SET_NIC_ATTR_WITH_JOB_SUCCESS = """\
 - INFO     - Network attribute configuration job created: JID_498218641680
 - INFO     - Waiting for configuration job to be scheduled...
 - INFO     - Job JID_498218641680 status: Scheduled - Task successfully scheduled.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - INFO     - Monitoring job JID_498218641680 for completion...
 - INFO     - JobID: JID_498218641680
@@ -2540,22 +2551,11 @@ RESPONSE_SET_NIC_ATTR_WITH_JOB_SUCCESS = """\
 - INFO     - ✓ Successfully changed WakeOnLan from Enabled to Disabled
 """
 
-RESPONSE_SET_NIC_ATTR_JOB_FAILED = """\
-- INFO     - Patch command to set network attribute values and create next reboot job PASSED.
-- INFO     - Network attribute configuration job created: JID_498218641680
-- INFO     - Waiting for configuration job to be scheduled...
-- INFO     - Job JID_498218641680 status: Scheduled - Task successfully scheduled.
-- INFO     - Command passed to GracefulRestart server, code return is 204.
-- INFO     - Polling for host state: Not Down
-- WARNING  - Command failed to On server, host appears to be already in that state.
-- INFO     - Monitoring job JID_498218641680 for completion...
-- ERROR    - Configuration job JID_498218641680 did not complete successfully.
-- ERROR    - Network attribute changes may not have been applied.
-"""
-
 RESPONSE_SET_NIC_ATTR_NO_JOB_ID = """\
 - INFO     - Patch command to set network attribute values and create next reboot job PASSED.
 - WARNING  - No job ID returned in Location header. Changes may not persist after reboot.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - WARNING  - Configuration change submitted but job monitoring was not possible. Please manually verify attribute value persisted after reboot.
 """
@@ -2573,6 +2573,8 @@ RESPONSE_SET_NIC_ATTR_VERIFY_FAILED = """\
 - INFO     - Network attribute configuration job created: JID_498218641680
 - INFO     - Waiting for configuration job to be scheduled...
 - INFO     - Job JID_498218641680 status: Scheduled - Task successfully scheduled.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - INFO     - Monitoring job JID_498218641680 for completion...
 - INFO     - JobID: JID_498218641680
@@ -2589,6 +2591,8 @@ RESPONSE_SET_NIC_ATTR_FALSE_NEGATIVE = """\
 - INFO     - Network attribute configuration job created: JID_498218641680
 - INFO     - Waiting for configuration job to be scheduled...
 - INFO     - Job JID_498218641680 status: Scheduled - Task successfully scheduled.
+- INFO     - Current server state is OFF.
+- INFO     - Issuing a power-on request to the iDRAC.
 - INFO     - Command passed to On server, code return is 200.
 - INFO     - Monitoring job JID_498218641680 for completion...
 - ERROR    - Configuration job JID_498218641680 did not complete successfully.

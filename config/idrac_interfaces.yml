@@ -13,6 +13,7 @@ director_r640: NIC.Slot.1-2-1,HardDisk.List.1-1,NIC.Integrated.1-1-1
 director_r650: NIC.Slot.1-1-1,HardDisk.List.1-1,NIC.Integrated.1-1-1
 director_r660: NIC.PxeDevice.2-1,RAID.SL.3-2,NIC.PxeDevice.1-1
 director_r6625: NIC.PxeDevice.2-1,RAID.SL.3-2,NIC.PxeDevice.1-1
+director_r670: NIC.PxeDevice.2-1,RAID.SL.1-2,NIC.PxeDevice.1-1
 director_r720xd: NIC.Slot.4-2-1,HardDisk.List.1-1,NIC.Integrated.1-3-1
 director_r730xd: NIC.Integrated.1-2-1,HardDisk.List.1-1,NIC.Integrated.1-3-1
 director_740xd: NIC.Integrated.1-1-1,NIC.Integrated.1-2-1,NIC.Slot.7-2-1,NIC.Slot.7-1-1,NIC.Integrated.1-3-1,HardDisk.List.1-1
@@ -31,6 +32,7 @@ foreman_r640: NIC.Integrated.1-1-1,HardDisk.List.1-1,NIC.Slot.1-2-1
 foreman_r650: NIC.Integrated.1-1-1,HardDisk.List.1-1,NIC.Slot.1-1-1
 foreman_r660: NIC.PxeDevice.1-1,RAID.SL.3-2,NIC.PxeDevice.2-1
 foreman_r6625: NIC.PxeDevice.1-1,RAID.SL.3-2,NIC.PxeDevice.2-1
+foreman_r670: NIC.PxeDevice.1-1,RAID.SL.1-2,NIC.PxeDevice.2-1
 foreman_r720xd: NIC.Integrated.1-3-1,HardDisk.List.1-1,NIC.Slot.4-2-1
 foreman_r730xd: NIC.Integrated.1-3-1,HardDisk.List.1-1,NIC.Integrated.1-2-1
 foreman_740xd: NIC.Integrated.1-3-1,NIC.Integrated.1-1-1,NIC.Slot.7-2-1,NIC.Slot.7-1-1,HardDisk.List.1-1,NIC.Integrated.1-2-1

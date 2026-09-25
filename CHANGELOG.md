@@ -1,38 +1,39 @@
 # CHANGELOG
 
 
-## v1.8.0 (2026-09-16)
+## Unreleased
 
 ### Bug Fixes
 
-- Retry quay pulls to handle transient CDN EOFs
-  ([`513a4df`](https://github.com/quadsproject/badfish/commit/513a4df8d8fbe367108241729477a00453a80a8a))
+- iDRAC10 boot order changes
 
-Add --retry=5 --retry-delay=15s to the podman build and push commands in the production release
-  workflow so transient Quay CDN connection failures no longer fail releases.
+Dell 17G hosts (R670, iDRAC10) fail `change-boot` / `check-boot` with "Boot order modification is not
+  supported by this host." iDRAC10 dropped the `{system}/BootSources` collection (404) and serves the
+  boot order under the OEM `{system}/Oem/Dell/DellBootSources` resource instead.
 
-fixes: https://github.com/quadsproject/badfish/issues/582
+`find_boot_sources_resource()` resolves the resource by trying `/BootSources` then, when it is
+  unavailable, the OEM `DellBootSources` path, caching the result. `get_boot_devices()` and
+  `patch_boot_seq()` now use the resolved resource (and its `/Settings` target), so both iDRAC9 and
+  iDRAC10 hosts are handled. `patch_boot_seq()` also accepts a 204 No Content response as success.
 
-### Documentation
+- iDRAC10 job, network, and firmware-version paths
 
-- Address review feedback on PR #587
-  ([`36e4b62`](https://github.com/quadsproject/badfish/commit/36e4b62bd77f74053aa5da71ac08277302ce6918))
+Dell 17G hosts (R670, iDRAC10) moved several Redfish endpoints that iDRAC9 served at legacy paths.
+  `find_jobs_resource()`, `find_dell_job_service_resource()`, `find_dell_lc_service_resource()`, and
+  `find_network_adapters_resource()` resolve the correct iDRAC9/iDRAC10 path (cached), and the
+  job-queue, DellLCService, network-adapter, and `list-interfaces` call sites route through them.
 
-Address reviewer feedback (sadsfae): - README: narrow python3-devel requirement to only pip source
-  builds (packager-side BuildRequires otherwise) - README: restore lowercase fc640 in the machine
-  table for consistency with the other rows and config key style - README: replace 'minimal IPMI 2.0
-  specification' with 'Redfish boot source override' (badfish is Redfish-only) - CONTRIBUTING:
-  modernize the last old-scheme docs link - CONTRIBUTING: drop redundant 'for' in 'request for
-  additional'
+iDRAC10 firmware (1.30.x) is numerically below the iDRAC9 5.x gate, so `get_idrac_fw_version()` now
+  also identifies iDRAC10 by its 1.x firmware version as well as the `17G` manager Model. The
+  DellJobService support check falls back to force-clearing (instead of erroring) when the service is
+  absent, and the legacy DellJobService candidate no longer carries a trailing slash that produced a
+  double-slash action URL.
 
-- Fix typos and inaccuracies in README and CONTRIBUTING
-  ([`3e472f9`](https://github.com/quadsproject/badfish/commit/3e472f96827010c86a8be5477d4d695c3fa2c37a))
+`get_boot_devices()` now falls back to the populated `UefiBootSeq`/`BootSeq` when the boot-mode read
+  fails, so `change-boot` applies the change instead of reporting a false "already matches".
 
-Fix spelling and grammar errors in README, CONTRIBUTING and the issue/PR templates, modernize stale
-  GitHub documentation links, and correct inaccurate claims (Redfish IPMI 2.0 requirement wording,
-  --get-power-consumed vendor scope, nonexistent 'Ready for review' template, Docs team reviewer).
-
-No functional changes; documentation only.
+`create_job()` now treats a 201 Created response as success, since Dell Redfish returns 201 when a
+  config job is accepted; previously `change-boot` errored on the successful job creation.
 
 
 ## v1.7.0 (2026-09-11)
