@@ -393,10 +393,10 @@ class Badfish:
                 return candidate
             if _response and _response.status in (401, 403):
                 self.logger.error("Authorization error probing %s (status %s).", candidate, _response.status)
-                raise BadfishException
+                raise BadfishException(f"Authorization error probing {candidate} (status {_response.status}).")
             if _response and _response.status >= 500:
                 self.logger.error("Server error probing %s (status %s).", candidate, _response.status)
-                raise BadfishException
+                raise BadfishException(f"Server error probing {candidate} (status {_response.status}).")
             if _response:
                 self.logger.debug("Probing %s returned status %s.", candidate, _response.status)
 
@@ -472,7 +472,7 @@ class Badfish:
                 raise BadfishException("Boot order modification is not supported by this host.")
 
             raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            data = load_json(raw, "boot order")
             if "Attributes" in data:
                 attributes = data["Attributes"]
                 # If the boot-mode-derived sequence is empty because the BootMode
@@ -2146,7 +2146,7 @@ class Badfish:
         try:
             await self.find_network_adapters_resource()
             na_supported = True
-        except BadfishException:
+        except ResourceNotFound:
             na_supported = False
         if na_supported:
             self.logger.debug("Getting Network Adapters")
@@ -2864,7 +2864,7 @@ class Badfish:
     async def get_nic_fqdds(self):
         try:
             uri = "%s%s" % (self.host_uri, await self.find_network_adapters_resource())
-        except BadfishException:
+        except ResourceNotFound:
             self.logger.error("Operation not supported by vendor.")
             return False
         resp = await self.get_request(uri)

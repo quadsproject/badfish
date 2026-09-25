@@ -1,6 +1,6 @@
 from unittest.mock import PropertyMock, patch
 
-from badfish.helpers.exceptions import BadfishException
+from badfish.helpers.exceptions import ResourceNotFound
 from tests.config import (
     DEVICE_NIC_I,
     DEVICE_NIC_S,
@@ -94,7 +94,7 @@ class TestLsInterfaces(TestBase):
         self, mock_get_ethernet, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
     ):
         # Mock the support checks: NetworkAdapters not supported, EthernetInterfaces supported
-        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_find_network.side_effect = ResourceNotFound("Network adapters not supported by this host.")
         mock_check_support.side_effect = [True]
 
         # Mock the ethernet interfaces data
@@ -138,7 +138,7 @@ class TestLsInterfaces(TestBase):
         mock_delete,
         mock_is_terminal,
     ):
-        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_find_network.side_effect = ResourceNotFound("Network adapters not supported by this host.")
         mock_check_support.side_effect = [True]
         ethernet_data = {
             "NIC.Slot.1-1-1": {
@@ -166,7 +166,7 @@ class TestLsInterfaces(TestBase):
         self, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
     ):
         # Mock the support checks: both NetworkAdapters and EthernetInterfaces not supported
-        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_find_network.side_effect = ResourceNotFound("Network adapters not supported by this host.")
         mock_check_support.side_effect = [False]
 
         self.set_mock_response(mock_get, 200, INIT_RESP)
@@ -201,7 +201,7 @@ class TestLsInterfaces(TestBase):
         self, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
     ):
         # Mock the support checks: both NetworkAdapters and EthernetInterfaces not supported
-        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_find_network.side_effect = ResourceNotFound("Network adapters not supported by this host.")
         mock_check_support.side_effect = [False]
 
         self.set_mock_response(mock_get, 200, INIT_RESP)

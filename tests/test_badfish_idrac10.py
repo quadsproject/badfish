@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from badfish.main import Badfish
-from badfish.helpers.exceptions import BadfishException
+from badfish.helpers.exceptions import BadfishException, ResourceNotFound
 
 HOST_URI = "https://mgmt-host.example.com"
 REDFISH_URI = "/redfish/v1"
@@ -658,7 +658,7 @@ class TestListInterfacesNetworkAdapters:
     async def test_falls_back_to_ethernet_interfaces(self, badfish_instance):
         badfish_instance._use_tables = False
         badfish_instance.find_network_adapters_resource = AsyncMock(
-            side_effect=BadfishException("Network adapters not supported by this host.")
+            side_effect=ResourceNotFound("Network adapters not supported by this host.")
         )
         badfish_instance.check_supported_network_interfaces = AsyncMock(return_value=True)
         badfish_instance.get_ethernet_interfaces = AsyncMock(return_value={})
