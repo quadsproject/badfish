@@ -19,7 +19,7 @@ from tests.config import (
     RESPONSE_LS_JOBS_EMPTY,
     TASK_OK_RESP,
 )
-from tests.test_base import TestBase
+from tests.test_base import MockResponse, TestBase
 
 
 def raise_badfish_exception_stub_del_req(arg1=None, arg2=None):
@@ -206,9 +206,9 @@ class TestCheckJob(TestBase):
     @patch("aiohttp.ClientSession.get")
     @patch("badfish.main.Badfish.get_request")
     def test_check_job_error(self, mock_get_req_call, mock_get, mock_post, mock_delete):
-        # The check_schedule_job_status method only makes one call to get_request
-        # which should return None to simulate the error condition
-        mock_get_req_call.side_effect = [None]
+        # The jobs-resource resolver probes the jobs collection, then the job
+        # status GET returns None to simulate the error condition.
+        mock_get_req_call.side_effect = [MockResponse("{}", 200), None]
         self.set_mock_response(mock_get, 200, INIT_RESP)
         self.set_mock_response(mock_post, 200, "OK")
         self.set_mock_response(mock_delete, 200, "OK")
