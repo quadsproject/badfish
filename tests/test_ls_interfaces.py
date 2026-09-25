@@ -1,5 +1,6 @@
 from unittest.mock import PropertyMock, patch
 
+from badfish.helpers.exceptions import BadfishException
 from tests.config import (
     DEVICE_NIC_I,
     DEVICE_NIC_S,
@@ -86,11 +87,15 @@ class TestLsInterfaces(TestBase):
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
+    @patch("badfish.main.Badfish.find_network_adapters_resource")
     @patch("badfish.main.Badfish.check_supported_network_interfaces")
     @patch("badfish.main.Badfish.get_ethernet_interfaces")
-    def test_ls_interfaces_ethernet(self, mock_get_ethernet, mock_check_support, mock_get, mock_post, mock_delete):
+    def test_ls_interfaces_ethernet(
+        self, mock_get_ethernet, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
+    ):
         # Mock the support checks: NetworkAdapters not supported, EthernetInterfaces supported
-        mock_check_support.side_effect = [False, True]
+        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_check_support.side_effect = [True]
 
         # Mock the ethernet interfaces data
         ethernet_data = {
@@ -120,12 +125,21 @@ class TestLsInterfaces(TestBase):
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
+    @patch("badfish.main.Badfish.find_network_adapters_resource")
     @patch("badfish.main.Badfish.check_supported_network_interfaces")
     @patch("badfish.main.Badfish.get_ethernet_interfaces")
     def test_ls_interfaces_ethernet_table(
-        self, mock_get_ethernet, mock_check_support, mock_get, mock_post, mock_delete, mock_is_terminal
+        self,
+        mock_get_ethernet,
+        mock_check_support,
+        mock_find_network,
+        mock_get,
+        mock_post,
+        mock_delete,
+        mock_is_terminal,
     ):
-        mock_check_support.side_effect = [False, True]
+        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_check_support.side_effect = [True]
         ethernet_data = {
             "NIC.Slot.1-1-1": {
                 "Name": "System Ethernet Interface",
@@ -146,10 +160,14 @@ class TestLsInterfaces(TestBase):
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
+    @patch("badfish.main.Badfish.find_network_adapters_resource")
     @patch("badfish.main.Badfish.check_supported_network_interfaces")
-    def test_ls_interfaces_ethernet_not_supported(self, mock_check_support, mock_get, mock_post, mock_delete):
+    def test_ls_interfaces_ethernet_not_supported(
+        self, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
+    ):
         # Mock the support checks: both NetworkAdapters and EthernetInterfaces not supported
-        mock_check_support.side_effect = [False, False]
+        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_check_support.side_effect = [False]
 
         self.set_mock_response(mock_get, 200, INIT_RESP)
         self.set_mock_response(mock_post, 200, "OK")
@@ -177,10 +195,14 @@ class TestLsInterfaces(TestBase):
     @patch("aiohttp.ClientSession.delete")
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
+    @patch("badfish.main.Badfish.find_network_adapters_resource")
     @patch("badfish.main.Badfish.check_supported_network_interfaces")
-    def test_ls_interfaces_none_supported(self, mock_check_support, mock_get, mock_post, mock_delete):
+    def test_ls_interfaces_none_supported(
+        self, mock_check_support, mock_find_network, mock_get, mock_post, mock_delete
+    ):
         # Mock the support checks: both NetworkAdapters and EthernetInterfaces not supported
-        mock_check_support.side_effect = [False, False]
+        mock_find_network.side_effect = BadfishException("Network adapters not supported by this host.")
+        mock_check_support.side_effect = [False]
 
         self.set_mock_response(mock_get, 200, INIT_RESP)
         self.set_mock_response(mock_post, 200, "OK")

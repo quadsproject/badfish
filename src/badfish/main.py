@@ -382,27 +382,33 @@ class Badfish:
 
         raise BadfishException("Boot order modification is not supported by this host.")
 
+    async def _find_resource(self, candidates, cache_attr, error_message):
+        """Return the first candidate that responds 200, caching it in ``cache_attr``.
+
+        Shared by the OEM resolvers that handle iDRAC9/iDRAC10 endpoint moves.
+        """
+        if getattr(self, cache_attr):
+            return getattr(self, cache_attr)
+
+        for candidate in candidates:
+            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
+            if _response and _response.status == 200:
+                setattr(self, cache_attr, candidate)
+                return candidate
+
+        raise BadfishException(error_message)
+
     async def find_jobs_resource(self):
         """Resolve the Dell job collection path.
 
         iDRAC9 serves it at ``{manager}/Jobs``; iDRAC10 (Dell 17G hosts,
         e.g. R670) moved it to ``{manager}/Oem/Dell/Jobs``. Cache the result.
         """
-        if self.jobs_resource:
-            return self.jobs_resource
-
-        candidates = [
-            "%s/Jobs" % self.manager_resource,
-            "%s/Oem/Dell/Jobs" % self.manager_resource,
-        ]
-
-        for candidate in candidates:
-            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
-            if _response and _response.status == 200:
-                self.jobs_resource = candidate
-                return candidate
-
-        raise BadfishException("Job collection not supported by this host.")
+        return await self._find_resource(
+            ["%s/Jobs" % self.manager_resource, "%s/Oem/Dell/Jobs" % self.manager_resource],
+            "jobs_resource",
+            "Job collection not supported by this host.",
+        )
 
     async def find_dell_job_service_resource(self):
         """Resolve the DellJobService path.
@@ -411,21 +417,14 @@ class Badfish:
         iDRAC10 serves it under ``{manager}/Oem/Dell/DellJobService``. Cache the
         result.
         """
-        if self.dell_job_service_resource:
-            return self.dell_job_service_resource
-
-        candidates = [
-            "%s/Dell/Managers/iDRAC.Embedded.1/DellJobService/" % self.redfish_uri,
-            "%s/Oem/Dell/DellJobService" % self.manager_resource,
-        ]
-
-        for candidate in candidates:
-            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
-            if _response and _response.status == 200:
-                self.dell_job_service_resource = candidate
-                return candidate
-
-        raise BadfishException("DellJobService not supported by this host.")
+        return await self._find_resource(
+            [
+                "%s/Dell/Managers/iDRAC.Embedded.1/DellJobService" % self.redfish_uri,
+                "%s/Oem/Dell/DellJobService" % self.manager_resource,
+            ],
+            "dell_job_service_resource",
+            "DellJobService not supported by this host.",
+        )
 
     async def find_dell_lc_service_resource(self):
         """Resolve the DellLCService path.
@@ -434,21 +433,14 @@ class Badfish:
         iDRAC10 serves it under ``{manager}/Oem/Dell/DellLCService``. Cache the
         result.
         """
-        if self.dell_lc_service_resource:
-            return self.dell_lc_service_resource
-
-        candidates = [
-            "%s/Dell/Managers/iDRAC.Embedded.1/DellLCService" % self.redfish_uri,
-            "%s/Oem/Dell/DellLCService" % self.manager_resource,
-        ]
-
-        for candidate in candidates:
-            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
-            if _response and _response.status == 200:
-                self.dell_lc_service_resource = candidate
-                return candidate
-
-        raise BadfishException("DellLCService not supported by this host.")
+        return await self._find_resource(
+            [
+                "%s/Dell/Managers/iDRAC.Embedded.1/DellLCService" % self.redfish_uri,
+                "%s/Oem/Dell/DellLCService" % self.manager_resource,
+            ],
+            "dell_lc_service_resource",
+            "DellLCService not supported by this host.",
+        )
 
     async def find_network_adapters_resource(self):
         """Resolve the network adapters collection path.
@@ -456,22 +448,15 @@ class Badfish:
         iDRAC9 serves it at ``{system}/NetworkAdapters``; iDRAC10 moved it to
         ``{chassis}/NetworkAdapters``. Cache the result.
         """
-        if self.network_adapters_resource:
-            return self.network_adapters_resource
-
         _system_id = self.system_resource.split("/")[-1]
-        candidates = [
-            "%s/NetworkAdapters" % self.system_resource,
-            "%s/Chassis/%s/NetworkAdapters" % (self.redfish_uri, _system_id),
-        ]
-
-        for candidate in candidates:
-            _response = await self.get_request("%s%s" % (self.host_uri, candidate))
-            if _response and _response.status == 200:
-                self.network_adapters_resource = candidate
-                return candidate
-
-        raise BadfishException("Network adapters not supported by this host.")
+        return await self._find_resource(
+            [
+                "%s/NetworkAdapters" % self.system_resource,
+                "%s/Chassis/%s/NetworkAdapters" % (self.redfish_uri, _system_id),
+            ],
+            "network_adapters_resource",
+            "Network adapters not supported by this host.",
+        )
 
     async def get_boot_devices(self):
         if not self.boot_devices:
@@ -928,7 +913,11 @@ class Badfish:
             await self.error_handler(_response)
 
     async def check_supported_idrac_version(self):
-        _url = "%s%s" % (self.host_uri, await self.find_dell_job_service_resource())
+        try:
+            _url = "%s%s" % (self.host_uri, await self.find_dell_job_service_resource())
+        except BadfishException:
+            self.logger.warning("iDRAC version installed does not support DellJobService")
+            return False
         _response = await self.get_request(_url)
         if _response.status != 200:
             self.logger.warning("iDRAC version installed does not support DellJobService")
@@ -1018,7 +1007,8 @@ class Badfish:
 
     async def create_job(self, _url, _payload, _headers, expected=None):
         if not expected:
-            expected = [200, 204]
+            # Dell Redfish returns 201 Created when a config job is accepted.
+            expected = [200, 201, 204]
         _response = await self.post_request(_url, _payload, _headers)
 
         status_code = _response.status
@@ -2141,7 +2131,11 @@ class Badfish:
         return data
 
     async def list_interfaces(self):
-        na_supported = await self.check_supported_network_interfaces("NetworkAdapters")
+        try:
+            await self.find_network_adapters_resource()
+            na_supported = True
+        except BadfishException:
+            na_supported = False
         if na_supported:
             self.logger.debug("Getting Network Adapters")
             data = await self.get_network_adapters()
@@ -2928,10 +2922,12 @@ class Badfish:
             raw = await resp.text("utf-8", "ignore")
             data = json.loads(raw.strip())
             # Dell 17G servers (iDRAC10) report a non-monotonic firmware (1.30.x)
-            # that is numerically lower than the iDRAC9 5.x gate; identify them by
-            # the manager Model instead.
-            self._idrac10 = "17G" in str(data.get("Model", ""))
-            idrac_fw_version = int(data["FirmwareVersion"].replace(".", ""))
+            # that is numerically lower than the iDRAC9 5.x gate. Identify them by
+            # the manager Model ("17G") or by the 1.x firmware version, since
+            # iDRAC9/8 never ship a 1.x release.
+            fw_version_str = str(data["FirmwareVersion"])
+            self._idrac10 = "17G" in str(data.get("Model", "")) or fw_version_str.startswith("1.")
+            idrac_fw_version = int(fw_version_str.replace(".", ""))
         except (AttributeError, ValueError, StopIteration):
             self.logger.error("Was unable to get iDRAC Firmware Version.")
             return 0

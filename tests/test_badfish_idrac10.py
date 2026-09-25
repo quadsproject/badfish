@@ -33,7 +33,7 @@ BOOT_SOURCES_RESP = {"Attributes": {"UefiBootSeq": UEFI_BOOT_SEQ}}
 
 JOBS = "%s/Jobs" % MANAGER_RESOURCE
 OEM_JOBS = "%s/Oem/Dell/Jobs" % MANAGER_RESOURCE
-DELL_JOB_SERVICE_LEGACY = "%s/Dell/Managers/iDRAC.Embedded.1/DellJobService/" % REDFISH_URI
+DELL_JOB_SERVICE_LEGACY = "%s/Dell/Managers/iDRAC.Embedded.1/DellJobService" % REDFISH_URI
 OEM_DELL_JOB_SERVICE = "%s/Oem/Dell/DellJobService" % MANAGER_RESOURCE
 DELL_LC_SERVICE_LEGACY = "%s/Dell/Managers/iDRAC.Embedded.1/DellLCService" % REDFISH_URI
 OEM_DELL_LC_SERVICE = "%s/Oem/Dell/DellLCService" % MANAGER_RESOURCE
@@ -482,6 +482,17 @@ class TestCreateBiosConfigJobIdrac10:
             "TargetSettingsURI": "/redfish/v1/Oem/Dell/DellBootSources/Settings"
         }
 
+    @pytest.mark.asyncio
+    async def test_accepts_201_created(self, badfish_instance):
+        # Dell Redfish returns 201 Created when a job is accepted.
+        badfish_instance.get_request = AsyncMock(side_effect=router({url(OEM_JOBS): make_response()}))
+        badfish_instance.post_request = AsyncMock(return_value=make_response(status=201, payload={"JobID": JOB_ID}))
+        badfish_instance._extract_job_id_from_response = MagicMock(return_value=JOB_ID)
+
+        result = await badfish_instance.create_bios_config_job("/Oem/Dell/DellBootSources/Settings")
+
+        assert result == JOB_ID
+
 
 class TestGetIdracFwVersionIdrac10:
     @pytest.mark.asyncio
@@ -554,3 +565,74 @@ class TestBootSeqFallback:
 
         assert badfish_instance.patch_request.call_args[0][1] == {"Attributes": {"UefiBootSeq": UEFI_BOOT_SEQ}}
         badfish_instance.get_boot_seq.assert_not_awaited()
+
+
+class TestCheckSupportedIdracVersion:
+    @pytest.mark.asyncio
+    async def test_returns_false_when_dell_job_service_unsupported(self, badfish_instance):
+        # Hosts without a DellJobService (e.g. Supermicro) must fall back to
+        # force-clearing rather than let the resolver exception propagate.
+        badfish_instance.get_request = AsyncMock(side_effect=router({}))
+
+        assert await badfish_instance.check_supported_idrac_version() is False
+
+    @pytest.mark.asyncio
+    async def test_returns_true_when_service_supported(self, badfish_instance):
+        badfish_instance.get_request = AsyncMock(side_effect=router({url(DELL_JOB_SERVICE_LEGACY): make_response()}))
+
+        assert await badfish_instance.check_supported_idrac_version() is True
+
+
+class TestDeleteJobQueueDell:
+    @pytest.mark.asyncio
+    async def test_legacy_candidate_uses_single_slash_action_url(self, badfish_instance):
+        badfish_instance.get_request = AsyncMock(side_effect=router({url(DELL_JOB_SERVICE_LEGACY): make_response()}))
+        badfish_instance.post_request = AsyncMock(return_value=make_response(status=200))
+
+        await badfish_instance.delete_job_queue_dell(False)
+
+        action_url = badfish_instance.post_request.call_args[0][0]
+        assert action_url == "%s/Actions/DellJobService.DeleteJobQueue" % url(DELL_JOB_SERVICE_LEGACY)
+        assert "//Actions" not in action_url
+
+
+class TestListInterfacesNetworkAdapters:
+    @pytest.mark.asyncio
+    async def test_uses_resolver_on_idrac10_chassis(self, badfish_instance):
+        badfish_instance._use_tables = False
+        badfish_instance.get_request = AsyncMock(side_effect=router({url(NA_CHASSIS): make_response()}))
+        badfish_instance.get_network_adapters = AsyncMock(return_value={})
+
+        assert await badfish_instance.list_interfaces() is True
+        badfish_instance.get_network_adapters.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_ethernet_interfaces(self, badfish_instance):
+        badfish_instance._use_tables = False
+        badfish_instance.find_network_adapters_resource = AsyncMock(
+            side_effect=BadfishException("Network adapters not supported by this host.")
+        )
+        badfish_instance.check_supported_network_interfaces = AsyncMock(return_value=True)
+        badfish_instance.get_ethernet_interfaces = AsyncMock(return_value={})
+
+        assert await badfish_instance.list_interfaces() is True
+        badfish_instance.get_ethernet_interfaces.assert_awaited_once()
+
+
+class TestGetIdracFwVersionIdrac10Firmware:
+    @pytest.mark.asyncio
+    async def test_detects_idrac10_when_model_lacks_17g(self, badfish_instance):
+        badfish_instance.get_request = AsyncMock(
+            side_effect=router(
+                {
+                    url(MANAGER_RESOURCE + "/"): make_response(
+                        payload={"FirmwareVersion": "1.30.30.52", "Model": "PowerEdge R670"}
+                    )
+                }
+            )
+        )
+
+        version = await badfish_instance.get_idrac_fw_version()
+
+        assert version == 1303052
+        assert badfish_instance._idrac10 is True

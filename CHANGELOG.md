@@ -16,6 +16,25 @@ Dell 17G hosts (R670, iDRAC10) fail `change-boot` / `check-boot` with "Boot orde
   `patch_boot_seq()` now use the resolved resource (and its `/Settings` target), so both iDRAC9 and
   iDRAC10 hosts are handled. `patch_boot_seq()` also accepts a 204 No Content response as success.
 
+- iDRAC10 job, network, and firmware-version paths
+
+Dell 17G hosts (R670, iDRAC10) moved several Redfish endpoints that iDRAC9 served at legacy paths.
+  `find_jobs_resource()`, `find_dell_job_service_resource()`, `find_dell_lc_service_resource()`, and
+  `find_network_adapters_resource()` resolve the correct iDRAC9/iDRAC10 path (cached), and the
+  job-queue, DellLCService, network-adapter, and `list-interfaces` call sites route through them.
+
+iDRAC10 firmware (1.30.x) is numerically below the iDRAC9 5.x gate, so `get_idrac_fw_version()` now
+  also identifies iDRAC10 by its 1.x firmware version as well as the `17G` manager Model. The
+  DellJobService support check falls back to force-clearing (instead of erroring) when the service is
+  absent, and the legacy DellJobService candidate no longer carries a trailing slash that produced a
+  double-slash action URL.
+
+`get_boot_devices()` now falls back to the populated `UefiBootSeq`/`BootSeq` when the boot-mode read
+  fails, so `change-boot` applies the change instead of reporting a false "already matches".
+
+`create_job()` now treats a 201 Created response as success, since Dell Redfish returns 201 when a
+  config job is accepted; previously `change-boot` errored on the successful job creation.
+
 
 ## v1.7.0 (2026-09-11)
 
