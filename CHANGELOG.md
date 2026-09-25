@@ -1,39 +1,190 @@
 # CHANGELOG
 
 
-## Unreleased
+## v1.8.1 (2026-09-25)
 
 ### Bug Fixes
 
-- iDRAC10 boot order changes
+- Address iDRAC10 review findings and 201 job status
+  ([`0f460c7`](https://github.com/quadsproject/badfish/commit/0f460c72b948adb250f38cc8141982c11ec523d2))
 
-Dell 17G hosts (R670, iDRAC10) fail `change-boot` / `check-boot` with "Boot order modification is not
-  supported by this host." iDRAC10 dropped the `{system}/BootSources` collection (404) and serves the
-  boot order under the OEM `{system}/Oem/Dell/DellBootSources` resource instead.
+- check_supported_idrac_version() returns False if DellJobService is missing, preserving the
+  Supermicro force-clear fallback. - Drop the trailing slash from the legacy DellJobService
+  candidate so delete_job_queue_dell builds a single-slash action URL. - Route list-interfaces
+  through find_network_adapters_resource() so the iDRAC10 chassis path is reached. - Detect iDRAC10
+  by the 1.x firmware version or the 17G Model. - create_job() accepts 201 Created, which Dell
+  Redfish returns when a config job is accepted. - Consolidate the OEM resolvers on a shared
+  _find_resource() helper.
 
-`find_boot_sources_resource()` resolves the resource by trying `/BootSources` then, when it is
-  unavailable, the OEM `DellBootSources` path, caching the result. `get_boot_devices()` and
-  `patch_boot_seq()` now use the resolved resource (and its `/Settings` target), so both iDRAC9 and
-  iDRAC10 hosts are handled. `patch_boot_seq()` also accepts a 204 No Content response as success.
+fixes https://github.com/quadsproject/badfish/issues/590
 
-- iDRAC10 job, network, and firmware-version paths
+- Fall back to populated boot sequence on unreadable BootMode
+  ([`9d25537`](https://github.com/quadsproject/badfish/commit/9d25537696a1de4be223816cb692950181fbfdb2))
 
-Dell 17G hosts (R670, iDRAC10) moved several Redfish endpoints that iDRAC9 served at legacy paths.
-  `find_jobs_resource()`, `find_dell_job_service_resource()`, `find_dell_lc_service_resource()`, and
-  `find_network_adapters_resource()` resolve the correct iDRAC9/iDRAC10 path (cached), and the
-  job-queue, DellLCService, network-adapter, and `list-interfaces` call sites route through them.
+When the BIOS BootMode read fails, badfish assumed legacy Bios and read the empty BootSeq attribute.
+  get_host_type() vacuously matched the requested type, so change-boot reported "already matches"
+  without changing anything.
 
-iDRAC10 firmware (1.30.x) is numerically below the iDRAC9 5.x gate, so `get_idrac_fw_version()` now
-  also identifies iDRAC10 by its 1.x firmware version as well as the `17G` manager Model. The
-  DellJobService support check falls back to force-clearing (instead of erroring) when the service is
-  absent, and the legacy DellJobService candidate no longer carries a trailing slash that produced a
-  double-slash action URL.
+get_boot_devices() now falls back to the populated UefiBootSeq or BootSeq and caches it;
+  patch_boot_seq() uses that resolved attribute, so the change is applied correctly whether the read
+  succeeds or not.
 
-`get_boot_devices()` now falls back to the populated `UefiBootSeq`/`BootSeq` when the boot-mode read
-  fails, so `change-boot` applies the change instead of reporting a false "already matches".
+fixes https://github.com/quadsproject/badfish/issues/590
 
-`create_job()` now treats a 201 Created response as success, since Dell Redfish returns 201 when a
-  config job is accepted; previously `change-boot` errored on the successful job creation.
+- Idrac10 job, network, and firmware-version paths
+  ([`f84ee65`](https://github.com/quadsproject/badfish/commit/f84ee656e7df3d4e302fe0a173d4cb64b540f584))
+
+iDRAC10 (Dell 17G / R670) moved several Redfish endpoints from their iDRAC9 locations. Resolve them
+  as the boot-sources fix does so that change-boot and the job/network/screenshot features work end
+  to end.
+
+Jobs moved to {manager}/Oem/Dell/Jobs; DellJobService and DellLCService left the legacy
+  /redfish/v1/Dell namespace for the manager OEM paths; NetworkAdapters moved to the chassis
+  resource. The iDRAC firmware version gate now recognizes iDRAC10 (1.30.x, model 17G) instead of
+  reporting "Unsupported iDRAC version".
+
+fixes https://github.com/quadsproject/badfish/issues/590
+
+- Narrow network-adapter fallback to ResourceNotFound
+  ([`3075003`](https://github.com/quadsproject/badfish/commit/3075003bd758f433629d855f650af7f937ada70f))
+
+list_interfaces and get_nic_fqdds catch ResourceNotFound around find_network_adapters_resource() so
+  a 401/403 or 5xx probe error propagates instead of being reported as "not supported".
+  get_boot_devices uses load_json(raw, "boot order") so a malformed response surfaces as the
+  friendly BadfishException, and the resolver auth/server errors carry a message for the top-level
+  handler.
+
+fixes https://github.com/quadsproject/badfish/issues/590
+
+- Surface probe errors and gate boot-seq fallback
+  ([`45720e9`](https://github.com/quadsproject/badfish/commit/45720e989409c982fa7c6fbafee04c09ebe0969f))
+
+_find_resource raises ResourceNotFound when no candidate returns 200. A 401/403 (auth) or >=500
+  (server) probe aborts as a real error, so these are no longer misreported as "not supported by
+  this host". get_job_queue returns [] when the Jobs collection is absent (parent semantics), and
+  check_supported_idrac_version returns False only for ResourceNotFound so transport failures
+  propagate.
+
+get_boot_devices falls back to the other boot sequence only when the BootMode read actually failed,
+  so a genuine Bios host with an empty BootSeq is not retargeted to UefiBootSeq.
+
+fixes https://github.com/quadsproject/badfish/issues/590
+
+
+## v1.8.0 (2026-09-16)
+
+### Bug Fixes
+
+- Clarify reboot power-state messages
+  ([`db0af51`](https://github.com/quadsproject/badfish/commit/db0af5190283c30966b1f4897369e857d1ce2f63))
+
+Log the initial server power state and announce the power-on request when rebooting a powered-off
+  host.
+
+Suppress the redundant already-on message during reboot and explain when an accepted graceful
+  restart may still be in progress. Use INFO for other already-on responses and identify Dell
+  controllers as iDRAC.
+
+Preserve the existing reset actions and update the affected test output expectations.
+
+Validation: 127 mocked tests passed, 4 skipped; flake8 passed.
+
+Fixes #413
+
+- Idrac10 boot order changes
+  ([`5b32dc5`](https://github.com/quadsproject/badfish/commit/5b32dc5074f9fdd4aec35ecaeeaab12feb9a6a35))
+
+Dell 17G hosts (R670, iDRAC10) fail `change-boot`/`check-boot` with "Boot order modification is not
+  supported by this host." iDRAC10 dropped the {system}/BootSources collection (404) and serves the
+  boot order under the OEM {system}/Oem/Dell/DellBootSources resource instead.
+
+find_boot_sources_resource() resolves the resource by trying /BootSources then, when unavailable,
+  the OEM DellBootSources path, caching the result. get_boot_devices() and patch_boot_seq() now use
+  the resolved resource (and its /Settings target), so both iDRAC9 and iDRAC10 hosts are handled.
+  patch_boot_seq() also accepts a 204 No Content response as success.
+
+fixes: https://github.com/quadsproject/badfish/issues/590
+
+- Preserve reboot fallback messages and test restart output
+  ([`5617e3f`](https://github.com/quadsproject/badfish/commit/5617e3fe18a7c8bbcc58902478ab077a63d297b8))
+
+Only suppress the follow-up On conflict when a graceful restart has been accepted and the
+  explanatory INFO message replaces it. Keep the INFO response for forced, alternate, and rejected
+  graceful restart paths.
+
+Add reboot CLI regressions that assert output and reset action sequences. Cover initially-off hosts,
+  exercise the failed graceful and forced restart fixture, and remove the unused NIC job fixture.
+
+Validation: 509 tests passed on Python 3.12; all 12 changed executable
+
+lines covered. Source Black and flake8 checks passed.
+
+Fixes #413
+
+- Propagate handler failures to CLI exit codes
+  ([`53d93f4`](https://github.com/quadsproject/badfish/commit/53d93f427006aef8321592a8e5387659e3c753b8))
+
+execute_badfish() discarded the False return value from ~20 handler calls, so the CLI exited 0 even
+  when an operation failed. Capture each operation-failure handler's return and set result=False
+  (the channel already used by boot_to), which drives main() to exit 1.
+
+Wrapped handlers (False == operation failed): check_schedule_job_status, reset_idrac, reset_bmc,
+  get_power_consumed_watts, list_interfaces, list_gpu, mount_virtual_media, unmount_virtual_media,
+  set_bios_password, remove_bios_password, get_scp_targets, export_scp, import_scp, get_nic_fqdds,
+  get_nic_attribute(_info), set_nic_attribute.
+
+Informational-False handlers intentionally left untouched: check_virtual_media (False = nothing
+  mounted = success), check_remote_image (False = not attached/unsupported), list_job_queue,
+  check_boot, take_screenshot (raises), get_sriov_mode, power-state queries.
+
+Note: failures are routed through result=False rather than raising
+
+BadfishException because every wrapped handler already logs its own specific error before returning
+  False; raising would duplicate the error line and break existing CLI-output assertions.
+
+fixes: https://github.com/quadsproject/badfish/issues/568
+
+- Retry init requests and guard JSON parsing
+  ([`203b9a8`](https://github.com/quadsproject/badfish/commit/203b9a85c6a1b27043a09db1b81fecd5ddcda1d6))
+
+get_raw now honors self.retries by wrapping the session.get call in a retry loop that retries
+  transient failures (aiohttp.ClientError, TimeoutError, OSError) with a short pause, while
+  preserving the SSL certificate error path and _continue=None-on-failure behavior.
+
+Added a load_json() helper that raises BadfishException on malformed JSON and replaced the unwrapped
+  json.loads sites in helpers/http_client.py and main.py with it, so a malformed response surfaces
+  as a clear "Error reading <context> from host." error instead of a raw ValueError.
+
+fixes: https://github.com/quadsproject/badfish/issues/569
+
+- Retry quay pulls to handle transient CDN EOFs
+  ([`513a4df`](https://github.com/quadsproject/badfish/commit/513a4df8d8fbe367108241729477a00453a80a8a))
+
+Add --retry=5 --retry-delay=15s to the podman build and push commands in the production release
+  workflow so transient Quay CDN connection failures no longer fail releases.
+
+fixes: https://github.com/quadsproject/badfish/issues/582
+
+### Documentation
+
+- Address review feedback on PR #587
+  ([`36e4b62`](https://github.com/quadsproject/badfish/commit/36e4b62bd77f74053aa5da71ac08277302ce6918))
+
+Address reviewer feedback (sadsfae): - README: narrow python3-devel requirement to only pip source
+  builds (packager-side BuildRequires otherwise) - README: restore lowercase fc640 in the machine
+  table for consistency with the other rows and config key style - README: replace 'minimal IPMI 2.0
+  specification' with 'Redfish boot source override' (badfish is Redfish-only) - CONTRIBUTING:
+  modernize the last old-scheme docs link - CONTRIBUTING: drop redundant 'for' in 'request for
+  additional'
+
+- Fix typos and inaccuracies in README and CONTRIBUTING
+  ([`3e472f9`](https://github.com/quadsproject/badfish/commit/3e472f96827010c86a8be5477d4d695c3fa2c37a))
+
+Fix spelling and grammar errors in README, CONTRIBUTING and the issue/PR templates, modernize stale
+  GitHub documentation links, and correct inaccurate claims (Redfish IPMI 2.0 requirement wording,
+  --get-power-consumed vendor scope, nonexistent 'Ready for review' template, Docs team reviewer).
+
+No functional changes; documentation only.
 
 
 ## v1.7.0 (2026-09-11)
