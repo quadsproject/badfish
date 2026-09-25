@@ -34,7 +34,6 @@ from tests.config import (
 )
 from tests.test_base import TestBase
 
-
 FIXED_BASE_TIME = datetime(2024, 6, 15, 10, 30, 0)
 
 
@@ -60,6 +59,7 @@ async def test_export_scp_saves_file_inside_target_dir(tmp_path):
 
     config_body = {"SystemConfiguration": {"Settings": {"value": 1}}}
     job_resp = MagicMock()
+    job_resp.status = 200
     job_resp.text = AsyncMock(return_value=json.dumps(config_body))
 
     post_resp = MagicMock()
