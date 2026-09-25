@@ -111,6 +111,7 @@ class Badfish:
         self.manager_resource = None
         self.bios_uri = None
         self.boot_devices = None
+        self.boot_seq_attr = None
         self.boot_sources_resource = None
         self.jobs_resource = None
         self.dell_job_service_resource = None
@@ -482,17 +483,26 @@ class Badfish:
                 raise BadfishException("Boot order modification is not supported by this host.")
 
             raw = await _response.text("utf-8", "ignore")
-            data = load_json(raw, "boot order")
+            data = json.loads(raw.strip())
             if "Attributes" in data:
-                try:
-                    self.boot_devices = data["Attributes"][_boot_seq]
-                except KeyError:
-                    for key in data["Attributes"].keys():
-                        if "bootseq" in key.lower():
-                            self.logger.debug("Boot sequence found: %s" % key)
-                    raise BadfishException(
-                        "The boot mode does not match the boot sequence. Try again in a few minutes."
-                    )
+                attributes = data["Attributes"]
+                # If the boot-mode-derived sequence is empty (e.g. the BootMode
+                # attribute could not be read and we wrongly assumed Bios on a
+                # UEFI host), fall back to the populated sequence. Without this,
+                # an empty device list makes get_host_type() vacuously "match"
+                # and change-boot silently reports the host already matches.
+                if attributes.get(_boot_seq):
+                    self.boot_seq_attr = _boot_seq
+                    self.boot_devices = attributes[_boot_seq]
+                else:
+                    fallback = "UefiBootSeq" if _boot_seq == "BootSeq" else "BootSeq"
+                    if attributes.get(fallback):
+                        self.boot_seq_attr = fallback
+                        self.boot_devices = attributes[fallback]
+                    else:
+                        raise BadfishException(
+                            "The boot mode does not match the boot sequence. Try again in a few minutes."
+                        )
             else:
                 self.logger.debug(data)
                 raise BadfishException("Boot order modification is not supported by this host.")
@@ -871,7 +881,7 @@ class Badfish:
             self.logger.warning("No changes were made since the boot order already matches the requested.")
 
     async def patch_boot_seq(self, ordered_devices):
-        _boot_seq = await self.get_boot_seq()
+        _boot_seq = self.boot_seq_attr or await self.get_boot_seq()
         boot_sources_resource = await self.find_boot_sources_resource()
         url = "%s%s/Settings" % (self.host_uri, boot_sources_resource)
         payload = {"Attributes": {_boot_seq: ordered_devices}}

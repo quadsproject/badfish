@@ -520,3 +520,37 @@ class TestGetIdracFwVersionIdrac10:
         registry = await badfish_instance.get_nic_attribute_registry("NIC.Slot.4-1-1")
 
         assert registry == [{"AttributeName": "WakeOnLan"}]
+
+
+class TestBootSeqFallback:
+    @pytest.mark.asyncio
+    async def test_reads_uefi_boot_seq_when_bootseq_empty(self, badfish_instance):
+        # Simulate the BootMode read failing and badfish assuming Bios, so
+        # get_boot_seq() picks "BootSeq", which is empty on a UEFI host.
+        badfish_instance.get_boot_seq = AsyncMock(return_value="BootSeq")
+        badfish_instance.get_request = AsyncMock(
+            side_effect=router(
+                {
+                    url(OEM_BOOT_SOURCES): make_response(
+                        payload={"Attributes": {"BootSeq": [], "UefiBootSeq": UEFI_BOOT_SEQ}}
+                    )
+                }
+            )
+        )
+
+        await badfish_instance.get_boot_devices()
+
+        assert badfish_instance.boot_seq_attr == "UefiBootSeq"
+        assert badfish_instance.boot_devices == UEFI_BOOT_SEQ
+
+    @pytest.mark.asyncio
+    async def test_patch_boot_seq_uses_resolved_boot_seq_attr(self, badfish_instance):
+        badfish_instance.boot_seq_attr = "UefiBootSeq"
+        badfish_instance.get_request = AsyncMock(side_effect=router({url(OEM_BOOT_SOURCES): make_response()}))
+        badfish_instance.get_boot_seq = AsyncMock(return_value="BootSeq")
+        badfish_instance.patch_request = AsyncMock(return_value=make_response(status=200))
+
+        await badfish_instance.patch_boot_seq(UEFI_BOOT_SEQ)
+
+        assert badfish_instance.patch_request.call_args[0][1] == {"Attributes": {"UefiBootSeq": UEFI_BOOT_SEQ}}
+        badfish_instance.get_boot_seq.assert_not_awaited()
