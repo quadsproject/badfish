@@ -3,6 +3,7 @@ from unittest.mock import patch
 from tests.config import (
     INIT_RESP,
     NO_POWER,
+    NVIDIA_POWER_RESP,
     POWER_CONSUMED_RESP,
     RESPONSE_NO_POWER_CONSUMED,
     RESPONSE_POWER_CONSUMED_OK,
@@ -48,6 +49,21 @@ class TestPowerConsumed(TestBase):
     @patch("aiohttp.ClientSession.get")
     def test_no_power(self, mock_get, mock_post, mock_delete):
         responses = INIT_RESP + [NO_POWER]
+        self.set_mock_response(mock_get, 200, responses)
+        self.set_mock_response(mock_post, 200, "OK", True)
+        self.set_mock_response(mock_delete, 200, "OK")
+        _, err = self.badfish_call()
+        assert err == RESPONSE_NO_POWER_CONSUMED
+
+    @patch("aiohttp.ClientSession.delete")
+    @patch("aiohttp.ClientSession.post")
+    @patch("aiohttp.ClientSession.get")
+    def test_power_consumed_nvidia_missing_field(self, mock_get, mock_post, mock_delete):
+        # NVIDIA BMCs expose a PowerControl entry that lacks PowerConsumedWatts,
+        # so the DMTF field is absent. This used to raise an unhandled KeyError
+        # (issue #395). It must degrade to the same "not exposed" message as an
+        # empty PowerControl array.
+        responses = INIT_RESP + [NVIDIA_POWER_RESP]
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, 200, "OK", True)
         self.set_mock_response(mock_delete, 200, "OK")

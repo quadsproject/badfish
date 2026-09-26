@@ -802,7 +802,7 @@ class Badfish:
             raise BadfishException("Power value outside operating range.")
         try:
             cwc = data["PowerControl"][0]["PowerConsumedWatts"]
-        except IndexError:
+        except (IndexError, KeyError):
             cwc = "N/A. Try to `--racreset`."
         self.logger.info(f"Current watts consumed: {cwc}")
         return
