@@ -4,6 +4,11 @@ on:
     push:
         branches:
             - master
+    workflow_dispatch:
+        inputs:
+            ref:
+                description: 'Git ref to build and push to Quay (e.g. master or v1.8.1)'
+                required: true
 
 concurrency:
     group: production-release
@@ -15,6 +20,7 @@ jobs:
     # ------------------------------------------------------------------
     release:
         name: Semantic Release
+        if: github.event_name == 'push'
         runs-on: ubuntu-latest
         permissions:
             contents: write # Needed to create releases/tags
@@ -102,7 +108,7 @@ jobs:
     quay_master:
         name: Push Quay (Master)
         needs: release
-        if: needs.release.outputs.released == 'true'
+        if: github.event_name == 'workflow_dispatch' || needs.release.outputs.released == 'true'
         runs-on: ubuntu-latest
         permissions:
             contents: read
@@ -111,7 +117,7 @@ jobs:
             - name: Checkout Tagged Release
               uses: actions/checkout@v4
               with:
-                  ref: ${{ needs.release.outputs.tag }}
+                  ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || needs.release.outputs.tag }}
 
             - name: Podman Login
               env:
