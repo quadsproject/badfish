@@ -136,11 +136,22 @@ jobs:
             - name: Build and Push
               run: |
                   # Added --no-cache to ensure fresh layers
-                  # Retry pulls/pushes to ride out transient Quay CDN EOFs
+                  # Retry pushes to ride out transient Quay CDN EOFs
+                  # Runner podman does not support --retry on push, retry in a loop
                   podman build --no-cache --retry=5 --retry-delay=15s -t quay.io/quads/badfish:master .
                   podman tag quay.io/quads/badfish:master quay.io/quads/badfish:latest
-                  podman push --retry=5 --retry-delay=15s quay.io/quads/badfish:master
-                  podman push --retry=5 --retry-delay=15s quay.io/quads/badfish:latest
+                  for tag in master latest; do
+                    attempt=1
+                    until podman push "quay.io/quads/badfish:$tag"; do
+                      echo "Push of $tag failed (attempt $attempt/5), retrying in 15s"
+                      attempt=$((attempt + 1))
+                      if [ "$attempt" -gt 5 ]; then
+                        echo "Push of $tag failed after 5 attempts"
+                        exit 1
+                      fi
+                      sleep 15
+                    done
+                  done
 
     # ------------------------------------------------------------------
     # JOB 4: AUR PUBLISH
