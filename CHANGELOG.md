@@ -1,6 +1,32 @@
 # CHANGELOG
 
 
+## v1.8.2 (2026-09-26)
+
+### Bug Fixes
+
+- Allow manual quay rebuild on dispatch
+  ([`5e4a5fe`](https://github.com/quadsproject/badfish/commit/5e4a5fe88d1caef71054fadccff4ec36af9e8298))
+
+The Push Quay (Master) job needs always() so a manual workflow_dispatch run proceeds even though the
+  Semantic Release job (push-only) is skipped; without it every dependent job was skipped.
+
+### Chores
+
+- Add manual quay rebuild
+  ([`fa76f36`](https://github.com/quadsproject/badfish/commit/fa76f36c43aa573c62509e9c5e048a7e72d62d59))
+
+Allow the Production Release workflow to be dispatched manually with a ref so the Quay master/latest
+  tags can be rebuilt without a new release (e.g. after a failed push). Semantic Release is skipped
+  on dispatch.
+
+- Fix ci quay push retry
+  ([`b912640`](https://github.com/quadsproject/badfish/commit/b912640c1bbb35a32e975ad83b99cb2e84d0dbbf))
+
+podman push on the GitHub runners does not support --retry/--retry-delay, which made the master
+  Production Release step fail with exit 125. Retry pushes with a shell loop instead.
+
+
 ## v1.8.1 (2026-09-25)
 
 ### Bug Fixes
