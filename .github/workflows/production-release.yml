@@ -108,7 +108,8 @@ jobs:
     quay_master:
         name: Push Quay (Master)
         needs: release
-        if: github.event_name == 'workflow_dispatch' || needs.release.outputs.released == 'true'
+        # always() is required so a manual dispatch still runs when the release job is skipped
+        if: always() && (github.event_name == 'workflow_dispatch' || needs.release.outputs.released == 'true')
         runs-on: ubuntu-latest
         permissions:
             contents: read
