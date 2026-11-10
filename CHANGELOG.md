@@ -1,6 +1,69 @@
 # CHANGELOG
 
 
+## v1.8.3 (2026-11-10)
+
+### Bug Fixes
+
+- Handle PowerControl entry without PowerConsumedWatts
+  ([`a721c01`](https://github.com/quadsproject/badfish/commit/a721c01f74c4fc157354f2ed34187d052e97cca8))
+
+Some BMCs (notably NVIDIA) expose a PowerControl array whose member lacks the DMTF
+  PowerConsumedWatts field, so the lookup raises KeyError instead of IndexError. Catch both and
+  degrade to the same not-exposed message rather than an unhandled traceback (issue #395).
+
+- Read power from PowerSubsystem when PowerControl lacks PowerConsumedWatts
+  ([`f325e7c`](https://github.com/quadsproject/badfish/commit/f325e7cf3c61d3a18883b078baa4f01d23c23847))
+
+Fall back to PowerSubsystem (the DMTF successor to the deprecated /Power endpoint) and sum per-PSU
+  input power when the classic endpoint is absent or has no PowerConsumedWatts, so hosts with NVIDIA
+  BMCs report a real value instead of N/A, and degrade gracefully when neither endpoint exposes
+  data.
+
+fixes: https://github.com/quadsproject/badfish/issues/395
+
+fixes: https://github.com/quadsproject/badfish/issues/601
+
+### Chores
+
+- Bump lint CI
+  ([`19b7199`](https://github.com/quadsproject/badfish/commit/19b7199838deb614a74f0cdec02f83557bc11177))
+
+use checkout v4 and setup-python v5, track Python 3.13 minor instead of the removed 3.13.15 patch
+  release so the Lint job stops failing
+
+Fixes #604
+
+### Testing
+
+- Align edge-branch test comments with exercised behavior
+  ([`2403f31`](https://github.com/quadsproject/badfish/commit/2403f3125749be6066ed93f9e1f83cf5cb6f1168))
+
+The member_no_odata_id test skips both members (neither has a usable @odata.id) and the metrics_404
+  test skips both PSUs (all metrics endpoints return 404); the comments claimed otherwise. Say what
+  the tests actually do.
+
+fixes: https://github.com/quadsproject/badfish/issues/601
+
+- Cover PowerSubsystem edge branches and de-Dell-ify the N/A message
+  ([`ad8fb25`](https://github.com/quadsproject/badfish/commit/ad8fb250783b0be513182c393e64a437740e9823))
+
+Address review on #600: - Cover the PowerSubsystem reader's guard branches (non-200 supplies fetch,
+  member without @odata.id, non-200 metrics fetch, missing InputPowerWatts) so codecov patch
+  coverage no longer regresses. - Vendor-neutral message when power is not exposed (the --racreset
+  hint is Dell-specific and misleading on other vendor BMCs).
+
+fixes: https://github.com/quadsproject/badfish/issues/601
+
+- Fix metrics_404 test comment
+  ([`68f468e`](https://github.com/quadsproject/badfish/commit/68f468e0a4ab8fb0f70eadbab174c17ec1ff3d36))
+
+All PSU metrics endpoints return 404 in this test, so every PSU is skipped and the reader degrades
+  to N/A; the comment claimed the other PSU would still contribute.
+
+fixes: https://github.com/quadsproject/badfish/issues/601
+
+
 ## v1.8.2 (2026-09-26)
 
 ### Bug Fixes
