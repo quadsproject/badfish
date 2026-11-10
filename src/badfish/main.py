@@ -50,6 +50,7 @@ async def badfish_factory(
     _rack=None,
     _uloc=None,
     _blade=None,
+    _proxy=None,
 ):
     if not _logger:
         bfl = BadfishLogger()
@@ -69,6 +70,7 @@ async def badfish_factory(
         _rack,
         _uloc,
         _blade,
+        _proxy,
     )
     await badfish.init()
     return badfish
@@ -90,6 +92,7 @@ class Badfish:
         _rack=None,
         _uloc=None,
         _blade=None,
+        _proxy=None,
     ):
         self.host = _host
         self.username = _username
@@ -106,7 +109,7 @@ class Badfish:
         self.loop = _loop
         if not self.loop:
             self.loop = asyncio.get_event_loop()
-        self.http_client = HTTPClient(_host, _username, _password, _logger, _retries, _insecure, _timeout)
+        self.http_client = HTTPClient(_host, _username, _password, _logger, _retries, _insecure, _timeout, _proxy)
         self.system_resource = None
         self.manager_resource = None
         self.bios_uri = None
@@ -3293,6 +3296,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
     get_nic_attribute = _args["get_nic_attribute"]
     set_nic_attribute = _args["set_nic_attribute"]
     insecure = _args.get("insecure", False)
+    proxy = _args.get("proxy")
     result = True
     badfish = None
 
@@ -3329,6 +3333,7 @@ async def execute_badfish(_host, _args, logger, format_handler=None, console=Non
             _rack=rack,
             _uloc=uloc,
             _blade=blade,
+            _proxy=proxy,
         )
 
         if _args["host_list"] and not _args["output"]:

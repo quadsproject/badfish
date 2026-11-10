@@ -2,6 +2,17 @@ import argparse
 
 from badfish import __version__
 from badfish.config import RETRIES, TIMEOUT
+from badfish.helpers.proxies import ProxyError, parse_proxy
+
+
+def _proxy_type(value):
+    if not value:
+        return None
+    try:
+        parse_proxy(value)
+    except ProxyError as ex:
+        raise argparse.ArgumentTypeError(str(ex))
+    return value
 
 
 def _positive_int(value):
@@ -277,6 +288,12 @@ def create_parser():
         "--insecure",
         help="Disable SSL/TLS certificate verification (insecure, use only for testing)",
         action="store_true",
+    )
+    parser.add_argument(
+        "--proxy",
+        help="Route requests through an HTTP or SOCKS proxy (e.g. socks5h://127.0.0.1:1080)",
+        default=None,
+        type=_proxy_type,
     )
     parser.add_argument(
         "--get-scp-targets",
