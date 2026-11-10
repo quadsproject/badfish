@@ -49,6 +49,10 @@
          * [Variable number of retries](#variable-number-of-retries)
          * [Set request timeout](#set-request-timeout)
          * [Skip TLS certificate verification](#skip-tls-certificate-verification)
+         * [Using Badfish with a Proxy](#using-badfish-with-a-proxy)
+            * [SOCKS proxy](#socks-proxy)
+            * [HTTP proxy](#http-proxy)
+            * [HTTPS_PROXY environment variable](#https_proxy-environment-variable)
          * [Firmware inventory](#firmware-inventory)
          * [Delta of firmware inventories](#delta-of-firmware-inventories)
          * [Clear Job Queue](#clear-job-queue)
@@ -495,15 +499,45 @@ For development and testing against hosts that present self-signed certificates,
 badfish -H mgmt-your-server.example.com --insecure --power-state
 ```
 
-### Set proxy
-To route all Redfish requests through an HTTP or SOCKS proxy, pass `--proxy` with a proxy URL. This is useful when the management network is only reachable through a jump host, for example an SSH dynamic forward:
+### Using Badfish with a Proxy
+
+The management network is often only reachable through a jump host. Badfish can route every Redfish request through a proxy: pass an explicit `--proxy` URL, or use the `HTTPS_PROXY`/`HTTP_PROXY` environment variables with `--trust-env-proxy`. In both cases the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
+
+#### SOCKS proxy
+
+For example an SSH dynamic forward:
+
 ```bash
 ssh -D 1080 user@jump-host.example.com
 badfish -H mgmt-your-server.example.com --proxy socks5h://127.0.0.1:1080 --power-state
 ```
-Supported schemes are `http`, `socks4`, `socks4a`, `socks5` and `socks5h`; credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). Proxy support requires the optional `aiohttp-socks` package (`pip install badfish[proxy]`). Note that the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
 
-Alternatively, pass `--trust-env-proxy` to honor `HTTPS_PROXY`/`HTTP_PROXY` from the environment when `--proxy` is not set (only `http://` proxy URLs are supported; the flag is ignored if `--proxy` is given, and `NO_PROXY` is honored).
+Supported schemes are `socks4`, `socks4a`, `socks5` and `socks5h`. `socks5h` and `socks4a` resolve the BMC hostname on the proxy side; `socks5` and `socks4` resolve it locally. Credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). SOCKS support requires the optional `aiohttp-socks` package (`pip install badfish[proxy]`).
+
+#### HTTP proxy
+
+An HTTP proxy works the same way with `--proxy`; the request is tunneled through the proxy with TLS still end-to-end to the BMC:
+
+```bash
+badfish -H mgmt-your-server.example.com --proxy http://proxy.example.com:3128 --power-state
+```
+
+#### HTTPS_PROXY environment variable
+
+`--proxy` needs an explicit URL on every invocation. If the proxy is already configured in your environment, export `HTTPS_PROXY` and opt in with `--trust-env-proxy` (environment proxies are ignored without the flag):
+
+```bash
+export HTTPS_PROXY=http://proxy.example.com:3128
+badfish -H mgmt-your-server.example.com --trust-env-proxy --power-state
+```
+
+Behavior:
+
+- `HTTPS_PROXY` applies to the `https://` BMC requests badfish makes; `HTTP_PROXY` only applies to `http://` destinations, so for the Redfish API it is effectively `HTTPS_PROXY` that matters.
+- Only `http://` proxy URLs are supported from the environment (`https://` proxy URLs are ignored with a warning).
+- `NO_PROXY` is honored, so hosts listed there stay direct. localhost is not bypassed automatically; export `NO_PROXY=127.0.0.1,localhost` to keep the Redfish emulator direct.
+- `--proxy` takes precedence: `--trust-env-proxy` is ignored when `--proxy` is given.
+- The flag is opt-in by design: silently honoring a corporate `HTTPS_PROXY` would break direct management-network access for anyone who has the variable exported for other tooling.
 
 ### Firmware inventory
 If you would like to get a detailed list of all the devices supported by the BMC you can run ```badfish``` with the ```--firmware-inventory``` option which will return a list of devices with additional device info.
