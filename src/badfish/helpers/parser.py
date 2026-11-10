@@ -296,6 +296,11 @@ def create_parser():
         type=_proxy_type,
     )
     parser.add_argument(
+        "--trust-env-proxy",
+        help="Honor HTTPS_PROXY/HTTP_PROXY from the environment (ignored when --proxy is set)",
+        action="store_true",
+    )
+    parser.add_argument(
         "--get-scp-targets",
         help="(Dell iDRAC) Get allowable target values to export or import with iDRAC SCP."
         " Choices=['Export', 'Import']",
