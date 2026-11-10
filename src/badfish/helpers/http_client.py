@@ -4,7 +4,16 @@ import ssl
 from typing import Any, Dict, Optional
 
 import aiohttp
-from aiohttp_socks import ProxyConnectionError, ProxyError as SocksProxyError, ProxyTimeoutError
+
+try:
+    from aiohttp_socks import ProxyConnectionError, ProxyError as SocksProxyError, ProxyTimeoutError
+except ImportError:
+    # aiohttp-socks is an optional dependency; keep the class slots valid so the
+    # except clauses below work when the package is not installed.
+    class _SocksErrors(Exception):
+        pass
+
+    ProxyConnectionError = ProxyTimeoutError = SocksProxyError = _SocksErrors
 
 from async_lru import alru_cache
 from badfish.helpers.exceptions import BadfishException

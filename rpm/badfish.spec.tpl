@@ -25,13 +25,10 @@ BuildRequires:  python3dist(pytest)
 BuildRequires:  python3dist(pytest-asyncio)
 BuildRequires:  python3dist(pyyaml)
 BuildRequires:  python3dist(aiohttp)
-BuildRequires:  python3dist(aiohttp-socks)
 Provides:       badfish = %{version}-%{release}
 # The emulator subcommand (badfish.emulator.run_daemon) shells out to openssl
 # to generate its self-signed TLS cert on first run.
 Requires:       openssl
-# --proxy SOCKS support (also auto-derived from dist metadata)
-Requires:       python3dist(aiohttp-socks)
 
 %description
 %{desc}
