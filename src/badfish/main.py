@@ -789,23 +789,80 @@ class Badfish:
         return data["PowerState"]
 
     async def get_power_consumed_watts(self):
-        _uri = "%s%s/Chassis/%s/Power" % (self.host_uri, self.redfish_uri, self.system_resource.split("/")[-1])
-        _response = await self.get_request(_uri)
-
-        if _response.status == 404:
+        _chassis = self.system_resource.split("/")[-1]
+        cwc = None
+        supported = False
+        for reader in (self._get_power_consumed_classic, self._get_power_consumed_subsystem):
+            found, watts = await reader(_chassis)
+            supported = supported or found
+            if watts is not None:
+                cwc = watts
+                break
+        if cwc is None:
+            if supported:
+                self.logger.info("Current watts consumed: N/A. Power consumption not exposed by this host.")
+                return
             self.logger.error("Operation not supported by vendor.")
             return False
+        self.logger.info(f"Current watts consumed: {cwc}")
+
+    @staticmethod
+    def _parse_power_json(raw):
         try:
-            raw = await _response.text("utf-8", "ignore")
-            data = json.loads(raw.strip())
+            return json.loads(raw.strip())
         except ValueError:
             raise BadfishException("Power value outside operating range.")
+
+    async def _get_power_consumed_classic(self, chassis):
+        """Read PowerControl.PowerConsumedWatts from the legacy /Power endpoint.
+
+        Returns (endpoint present, watts or None).
+        """
+        _uri = "%s%s/Chassis/%s/Power" % (self.host_uri, self.redfish_uri, chassis)
+        _response = await self.get_request(_uri)
+        if _response.status == 404:
+            return False, None
+        data = self._parse_power_json(await _response.text("utf-8", "ignore"))
         try:
-            cwc = data["PowerControl"][0]["PowerConsumedWatts"]
-        except IndexError:
-            cwc = "N/A. Try to `--racreset`."
-        self.logger.info(f"Current watts consumed: {cwc}")
-        return
+            return True, data["PowerControl"][0]["PowerConsumedWatts"]
+        except (IndexError, KeyError, TypeError):
+            return True, None
+
+    async def _get_power_consumed_subsystem(self, chassis):
+        """Read power from PowerSubsystem, the DMTF successor to /Power that
+        newer firmware deprecates. PowerControl.PowerConsumedWatts on Dell
+        equates to the sum of PSU input power, exposed per-supply under
+        PowerSupplies/{id}/Metrics.InputPowerWatts.Reading.
+        """
+        _uri = "%s%s/Chassis/%s/PowerSubsystem" % (self.host_uri, self.redfish_uri, chassis)
+        _response = await self.get_request(_uri)
+        if _response.status == 404:
+            return False, None
+        data = self._parse_power_json(await _response.text("utf-8", "ignore"))
+        try:
+            supplies_uri = data["PowerSupplies"]["@odata.id"]
+        except (KeyError, TypeError):
+            return True, None
+        _response = await self.get_request("%s%s" % (self.host_uri, supplies_uri))
+        if _response.status != 200:
+            return True, None
+        data = self._parse_power_json(await _response.text("utf-8", "ignore"))
+        total = 0.0
+        found = False
+        for member in data.get("Members", []):
+            metrics_uri = member.get("@odata.id")
+            if not metrics_uri:
+                continue
+            metrics = await self.get_request("%s%s/Metrics" % (self.host_uri, metrics_uri))
+            if metrics.status != 200:
+                continue
+            try:
+                total += self._parse_power_json(await metrics.text("utf-8", "ignore"))["InputPowerWatts"]["Reading"]
+                found = True
+            except (KeyError, TypeError):
+                continue
+        # ponytail: int() truncation matches Dell's PowerConsumedWatts (sum of PSU input power)
+        return True, int(total) if found else None
 
     async def change_boot(self, host_type, interfaces_path, pxe=False):
         if interfaces_path:
