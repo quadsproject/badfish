@@ -40,6 +40,7 @@ class HTTPClient:
         insecure: bool = False,
         timeout: int = 120,
         proxy: Optional[str] = None,
+        trust_env_proxy: bool = False,
     ):
         self.host = host
         self.username = username
@@ -48,6 +49,7 @@ class HTTPClient:
         self.retries = retries
         self.insecure = insecure
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.trust_env_proxy = trust_env_proxy
         self.proxy = proxy
         if proxy:
             try:
@@ -66,7 +68,9 @@ class HTTPClient:
             connector = build_connector(self.proxy)
         except ProxyError as ex:
             raise BadfishException(str(ex)) from None
-        return aiohttp.ClientSession(connector=connector)
+        # Env proxies only apply when no explicit --proxy was given: the aiohttp
+        # request-level env proxy would otherwise silently override the connector.
+        return aiohttp.ClientSession(connector=connector, trust_env=self.trust_env_proxy and self.proxy is None)
 
     def _handle_ssl_error(self, ex: Exception) -> None:
         """Handle SSL certificate verification errors by logging and raising exception.

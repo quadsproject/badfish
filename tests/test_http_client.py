@@ -704,3 +704,38 @@ def test_http_client_imports_without_aiohttp_socks(monkeypatch):
         monkeypatch.undo()
         importlib.reload(hc)
         assert hc.ProxyConnectionError is RealProxyConnectionError
+
+
+@pytest.mark.asyncio
+async def test_session_ignores_env_proxy_by_default():
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, insecure=False)
+    session = client._session()
+    assert session._trust_env is False
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_session_trusts_env_proxy_when_enabled():
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, insecure=False, trust_env_proxy=True)
+    session = client._session()
+    assert session._trust_env is True
+    await session.close()
+
+
+@pytest.mark.asyncio
+async def test_session_explicit_proxy_wins_over_env():
+    logger = DummyLogger()
+    client = HTTPClient(
+        "host",
+        "u",
+        "p",
+        logger,
+        insecure=False,
+        proxy="http://127.0.0.1:8080",
+        trust_env_proxy=True,
+    )
+    session = client._session()
+    assert session._trust_env is False
+    await session.close()
