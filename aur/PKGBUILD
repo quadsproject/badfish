@@ -11,6 +11,7 @@ depends=(
     'python'
     'python-yaml'
     'python-aiohttp'
+    'python-aiohttp-socks'
     'python-setuptools'
     'python-async-lru'
     'python-rich'
