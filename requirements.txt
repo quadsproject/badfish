@@ -5,6 +5,7 @@
 
 pyyaml>=3.10
 aiohttp>=3.10
+aiohttp-socks>=0.11.0
 setuptools>=39.0
 async-lru>=2.0
 rich>=13.0

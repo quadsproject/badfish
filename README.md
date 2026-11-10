@@ -495,6 +495,14 @@ For development and testing against hosts that present self-signed certificates,
 badfish -H mgmt-your-server.example.com --insecure --power-state
 ```
 
+### Set proxy
+To route all Redfish requests through an HTTP or SOCKS proxy, pass `--proxy` with a proxy URL. This is useful when the management network is only reachable through a jump host, for example an SSH dynamic forward:
+```bash
+ssh -D 1080 user@jump-host.example.com
+badfish -H mgmt-your-server.example.com --proxy socks5h://127.0.0.1:1080 --power-state
+```
+Supported schemes are `http`, `socks4`, `socks4a`, `socks5` and `socks5h`; credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). SOCKS support requires the `aiohttp-socks` package. Note that the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
+
 ### Firmware inventory
 If you would like to get a detailed list of all the devices supported by the BMC you can run ```badfish``` with the ```--firmware-inventory``` option which will return a list of devices with additional device info.
 ```bash

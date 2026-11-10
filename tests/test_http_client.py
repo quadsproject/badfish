@@ -5,9 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import aiohttp
 import pytest
+from aiohttp_socks import ProxyConnector, ProxyConnectionError
 
 from badfish.helpers.http_client import HTTPClient, load_json
 from badfish.helpers.exceptions import BadfishException
+from badfish.helpers.proxies import ProxyError
 
 
 class DummyLogger:
@@ -572,3 +574,65 @@ async def test_delete_request_passes_timeout(mock_delete):
     _, kwargs = mock_delete.call_args
     assert isinstance(kwargs.get("timeout"), aiohttp.ClientTimeout)
     assert kwargs["timeout"].total == 9
+
+
+# --proxy tests
+
+
+def test_http_client_invalid_proxy_raises():
+    with pytest.raises(BadfishException, match="Unsupported proxy scheme 'ftp'"):
+        HTTPClient("host", "u", "p", DummyLogger(), proxy="ftp://127.0.0.1:1080")
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession")
+async def test_session_uses_proxy_connector(mock_session):
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    client._session()
+    kwargs = mock_session.call_args.kwargs or {}
+    assert isinstance(kwargs["connector"], ProxyConnector)
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession")
+async def test_session_without_proxy_uses_default_connector(mock_session):
+    client = HTTPClient("host", "u", "p", DummyLogger())
+    client._session()
+    kwargs = mock_session.call_args.kwargs or {}
+    assert kwargs.get("connector") is None
+
+
+@pytest.mark.asyncio
+@patch("badfish.helpers.http_client.build_connector")
+async def test_session_proxy_error_raises_badfish_exception(mock_build):
+    mock_build.side_effect = ProxyError("boom")
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="boom"):
+        client._session()
+
+
+@pytest.mark.asyncio
+@patch("badfish.helpers.http_client.build_connector")
+async def test_get_raw_preserves_proxy_error_message(mock_build):
+    mock_build.side_effect = ProxyError("install aiohttp-socks")
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="install aiohttp-socks"):
+        await client.get_raw("https://x")
+
+
+@pytest.mark.asyncio
+@patch("badfish.helpers.http_client.build_connector")
+async def test_post_request_preserves_proxy_error_message(mock_build):
+    mock_build.side_effect = ProxyError("install aiohttp-socks")
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="install aiohttp-socks"):
+        await client.post_request("https://x", {}, {})
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get", side_effect=ProxyConnectionError("proxy down"))
+async def test_get_raw_retries_proxy_connection_errors(mock_get):
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080", retries=3)
+    with pytest.raises(BadfishException, match="Failed to communicate"):
+        await client.get_raw("https://x")
+    assert mock_get.call_count == 3

@@ -4,9 +4,11 @@ import ssl
 from typing import Any, Dict, Optional
 
 import aiohttp
+from aiohttp_socks import ProxyConnectionError, ProxyError as SocksProxyError, ProxyTimeoutError
 
 from async_lru import alru_cache
 from badfish.helpers.exceptions import BadfishException
+from badfish.helpers.proxies import ProxyError, build_connector, parse_proxy
 
 
 def load_json(raw: str, context: str = "response") -> Any:
@@ -28,6 +30,7 @@ class HTTPClient:
         retries: int = 15,
         insecure: bool = False,
         timeout: int = 120,
+        proxy: Optional[str] = None,
     ):
         self.host = host
         self.username = username
@@ -36,12 +39,25 @@ class HTTPClient:
         self.retries = retries
         self.insecure = insecure
         self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.proxy = proxy
+        if proxy:
+            try:
+                parse_proxy(proxy)
+            except ProxyError as ex:
+                raise BadfishException(str(ex)) from None
         self.host_uri = f"https://{host}"
         self.redfish_uri = "/redfish/v1"
         self.root_uri = f"{self.host_uri}{self.redfish_uri}"
         self.semaphore = asyncio.Semaphore(50)
         self.token = None
         self.session_id = None
+
+    def _session(self) -> aiohttp.ClientSession:
+        try:
+            connector = build_connector(self.proxy)
+        except ProxyError as ex:
+            raise BadfishException(str(ex)) from None
+        return aiohttp.ClientSession(connector=connector)
 
     def _handle_ssl_error(self, ex: Exception) -> None:
         """Handle SSL certificate verification errors by logging and raising exception.
@@ -106,7 +122,7 @@ class HTTPClient:
         for _attempt in range(self.retries):
             try:
                 async with self.semaphore:
-                    async with aiohttp.ClientSession() as session:
+                    async with self._session() as session:
                         if not _get_token:
                             async with session.get(
                                 uri,
@@ -128,12 +144,21 @@ class HTTPClient:
                 if _continue:
                     return
                 self._handle_ssl_error(ex)
-            except (aiohttp.ClientError, TimeoutError, OSError) as ex:
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                OSError,
+                ProxyConnectionError,
+                SocksProxyError,
+                ProxyTimeoutError,
+            ) as ex:
                 self.logger.debug(f"HTTPClient get_raw attempt {_attempt + 1}/{self.retries} failed: {ex}")
                 if _continue:
                     return
                 if _attempt < self.retries - 1:
                     await asyncio.sleep(1)
+            except BadfishException:
+                raise
             except Exception as ex:
                 if _continue:
                     return
@@ -153,7 +178,7 @@ class HTTPClient:
     ):
         try:
             async with self.semaphore:
-                async with aiohttp.ClientSession() as session:
+                async with self._session() as session:
                     if not _get_token and self.token:
                         headers.update({"X-Auth-Token": self.token})
                     async with session.post(
@@ -169,6 +194,10 @@ class HTTPClient:
                             return _response
         except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
             self._handle_ssl_error(ex)
+        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+            raise BadfishException(str(ex)) from None
+        except BadfishException:
+            raise
         except (Exception, TimeoutError):
             raise BadfishException("Failed to communicate with server.")
         return _response
@@ -176,7 +205,7 @@ class HTTPClient:
     async def patch_request(self, uri: str, payload: Dict[str, Any], headers: Dict[str, str], _continue: bool = False):
         try:
             async with self.semaphore:
-                async with aiohttp.ClientSession() as session:
+                async with self._session() as session:
                     if self.token:
                         headers.update({"X-Auth-Token": self.token})
                     async with session.patch(
@@ -193,6 +222,12 @@ class HTTPClient:
             if _continue:
                 return None
             self._handle_ssl_error(ex)
+        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+            if _continue:
+                return None
+            raise BadfishException(str(ex)) from None
+        except BadfishException:
+            raise
         except Exception as ex:
             if _continue:
                 return None
@@ -203,7 +238,7 @@ class HTTPClient:
     async def delete_request(self, uri: str, headers: Dict[str, str]):
         try:
             async with self.semaphore:
-                async with aiohttp.ClientSession() as session:
+                async with self._session() as session:
                     if self.token:
                         headers.update({"X-Auth-Token": self.token})
                     async with session.delete(
@@ -217,6 +252,10 @@ class HTTPClient:
                         return _response
         except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
             self._handle_ssl_error(ex)
+        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+            raise BadfishException(str(ex)) from None
+        except BadfishException:
+            raise
         except (Exception, TimeoutError):
             raise BadfishException("Failed to communicate with server.")
 
