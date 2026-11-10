@@ -11,10 +11,12 @@ depends=(
     'python'
     'python-yaml'
     'python-aiohttp'
-    'python-aiohttp-socks'
     'python-setuptools'
     'python-async-lru'
     'python-rich'
+)
+optdepends=(
+    'python-aiohttp-socks: for --proxy HTTP/SOCKS proxy support'
 )
 makedepends=(
     'python-build'

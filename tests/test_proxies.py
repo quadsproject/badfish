@@ -1,16 +1,27 @@
 import builtins
 
 import pytest
-from aiohttp_socks import ProxyConnector
-from python_socks import ProxyType
 
 from badfish.helpers.proxies import ProxyError, build_connector, parse_proxy, redact_proxy
 from badfish.helpers.parser import parse_arguments
+
+try:
+    from aiohttp_socks import ProxyConnector
+    from python_socks import ProxyType
+except ImportError:
+    ProxyConnector = ProxyType = None
+
+requires_socks = pytest.mark.skipif(ProxyConnector is None, reason="aiohttp-socks not installed")
 
 
 def test_parse_arguments_accepts_proxy():
     args = parse_arguments(["-H", "host", "-u", "u", "-p", "p", "--proxy", "socks5h://127.0.0.1:1080"])
     assert args["proxy"] == "socks5h://127.0.0.1:1080"
+
+
+def test_parse_arguments_empty_proxy_returns_none():
+    args = parse_arguments(["-H", "host", "-u", "u", "-p", "p", "--proxy", ""])
+    assert args["proxy"] is None
 
 
 def test_parse_arguments_rejects_invalid_proxy():
@@ -101,36 +112,42 @@ def test_build_connector_socks_requires_aiohttp_socks(monkeypatch):
         build_connector("socks5://127.0.0.1:1080")
 
 
+@requires_socks
 async def test_build_connector_http():
     conn = build_connector("http://10.0.0.1:3128")
     assert isinstance(conn, ProxyConnector)
     assert conn._proxy_type == ProxyType.HTTP
 
 
+@requires_socks
 async def test_build_connector_socks5_resolves_locally():
     conn = build_connector("socks5://127.0.0.1:1080")
     assert conn._proxy_type == ProxyType.SOCKS5
     assert conn._rdns is False
 
 
+@requires_socks
 async def test_build_connector_socks5h_resolves_remotely():
     conn = build_connector("socks5h://127.0.0.1:1080")
     assert conn._proxy_type == ProxyType.SOCKS5
     assert conn._rdns is True
 
 
+@requires_socks
 async def test_build_connector_socks4_resolves_locally():
     conn = build_connector("socks4://127.0.0.1:1080")
     assert conn._proxy_type == ProxyType.SOCKS4
     assert conn._rdns is False
 
 
+@requires_socks
 async def test_build_connector_socks4a_resolves_remotely():
     conn = build_connector("socks4a://127.0.0.1:1080")
     assert conn._proxy_type == ProxyType.SOCKS4
     assert conn._rdns is True
 
 
+@requires_socks
 async def test_build_connector_keeps_userinfo():
     conn = build_connector("socks5://user:pass@127.0.0.1:1080")
     assert conn._proxy_host == "127.0.0.1"

@@ -5,11 +5,17 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import aiohttp
 import pytest
-from aiohttp_socks import ProxyConnector, ProxyConnectionError
 
 from badfish.helpers.http_client import HTTPClient, load_json
 from badfish.helpers.exceptions import BadfishException
 from badfish.helpers.proxies import ProxyError
+
+try:
+    from aiohttp_socks import ProxyConnector, ProxyConnectionError
+except ImportError:
+    ProxyConnector = ProxyConnectionError = None
+
+requires_socks = pytest.mark.skipif(ProxyConnector is None, reason="aiohttp-socks not installed")
 
 
 class DummyLogger:
@@ -585,6 +591,7 @@ def test_http_client_invalid_proxy_raises():
 
 
 @pytest.mark.asyncio
+@requires_socks
 @patch("aiohttp.ClientSession")
 async def test_session_uses_proxy_connector(mock_session):
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
@@ -630,9 +637,66 @@ async def test_post_request_preserves_proxy_error_message(mock_build):
 
 
 @pytest.mark.asyncio
+@requires_socks
 @patch("aiohttp.ClientSession.get", side_effect=ProxyConnectionError("proxy down"))
 async def test_get_raw_retries_proxy_connection_errors(mock_get):
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080", retries=3)
     with pytest.raises(BadfishException, match="Failed to communicate"):
         await client.get_raw("https://x")
     assert mock_get.call_count == 3
+
+
+@pytest.mark.asyncio
+@requires_socks
+@patch("aiohttp.ClientSession.post", side_effect=ProxyConnectionError("proxy down"))
+async def test_post_request_preserves_proxy_connection_error(mock_post):
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="proxy down"):
+        await client.post_request("https://x", {}, {})
+
+
+@pytest.mark.asyncio
+@requires_socks
+@patch("aiohttp.ClientSession.patch", side_effect=ProxyConnectionError("proxy down"))
+async def test_patch_request_preserves_proxy_connection_error(mock_patch):
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="proxy down"):
+        await client.patch_request("https://x", {}, {})
+
+
+@pytest.mark.asyncio
+@requires_socks
+@patch("aiohttp.ClientSession.delete", side_effect=ProxyConnectionError("proxy down"))
+async def test_delete_request_preserves_proxy_connection_error(mock_delete):
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+    with pytest.raises(BadfishException, match="proxy down"):
+        await client.delete_request("https://x", {})
+
+
+@requires_socks
+def test_http_client_imports_without_aiohttp_socks(monkeypatch):
+    import builtins
+    import importlib
+
+    from aiohttp_socks import ProxyConnectionError as RealProxyConnectionError
+
+    import badfish.helpers.http_client as hc
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "aiohttp_socks":
+            raise ImportError("No module named 'aiohttp_socks'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    try:
+        importlib.reload(hc)
+        assert hc.ProxyConnectionError is not RealProxyConnectionError
+        client = hc.HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
+        with pytest.raises(hc.BadfishException, match="aiohttp-socks"):
+            client._session()
+    finally:
+        monkeypatch.undo()
+        importlib.reload(hc)
+        assert hc.ProxyConnectionError is RealProxyConnectionError
