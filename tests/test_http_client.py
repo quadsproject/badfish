@@ -638,8 +638,9 @@ async def test_post_request_preserves_proxy_error_message(mock_build):
 
 @pytest.mark.asyncio
 @requires_socks
-@patch("aiohttp.ClientSession.get", side_effect=ProxyConnectionError("proxy down"))
+@patch("aiohttp.ClientSession.get")
 async def test_get_raw_retries_proxy_connection_errors(mock_get):
+    mock_get.side_effect = ProxyConnectionError("proxy down")
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080", retries=3)
     with pytest.raises(BadfishException, match="Failed to communicate"):
         await client.get_raw("https://x")
@@ -648,8 +649,9 @@ async def test_get_raw_retries_proxy_connection_errors(mock_get):
 
 @pytest.mark.asyncio
 @requires_socks
-@patch("aiohttp.ClientSession.post", side_effect=ProxyConnectionError("proxy down"))
+@patch("aiohttp.ClientSession.post")
 async def test_post_request_preserves_proxy_connection_error(mock_post):
+    mock_post.side_effect = ProxyConnectionError("proxy down")
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
     with pytest.raises(BadfishException, match="proxy down"):
         await client.post_request("https://x", {}, {})
@@ -657,8 +659,9 @@ async def test_post_request_preserves_proxy_connection_error(mock_post):
 
 @pytest.mark.asyncio
 @requires_socks
-@patch("aiohttp.ClientSession.patch", side_effect=ProxyConnectionError("proxy down"))
+@patch("aiohttp.ClientSession.patch")
 async def test_patch_request_preserves_proxy_connection_error(mock_patch):
+    mock_patch.side_effect = ProxyConnectionError("proxy down")
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
     with pytest.raises(BadfishException, match="proxy down"):
         await client.patch_request("https://x", {}, {})
@@ -666,8 +669,9 @@ async def test_patch_request_preserves_proxy_connection_error(mock_patch):
 
 @pytest.mark.asyncio
 @requires_socks
-@patch("aiohttp.ClientSession.delete", side_effect=ProxyConnectionError("proxy down"))
+@patch("aiohttp.ClientSession.delete")
 async def test_delete_request_preserves_proxy_connection_error(mock_delete):
+    mock_delete.side_effect = ProxyConnectionError("proxy down")
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="socks5h://127.0.0.1:1080")
     with pytest.raises(BadfishException, match="proxy down"):
         await client.delete_request("https://x", {})
