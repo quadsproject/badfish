@@ -501,7 +501,7 @@ To route all Redfish requests through an HTTP or SOCKS proxy, pass `--proxy` wit
 ssh -D 1080 user@jump-host.example.com
 badfish -H mgmt-your-server.example.com --proxy socks5h://127.0.0.1:1080 --power-state
 ```
-Supported schemes are `http`, `socks4`, `socks4a`, `socks5` and `socks5h`; credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). Proxy support requires the optional `aiohttp-socks` package (`pip install aiohttp-socks`). Note that the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
+Supported schemes are `http`, `socks4`, `socks4a`, `socks5` and `socks5h`; credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). Proxy support requires the optional `aiohttp-socks` package (`pip install badfish[proxy]`). Note that the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
 
 ### Firmware inventory
 If you would like to get a detailed list of all the devices supported by the BMC you can run ```badfish``` with the ```--firmware-inventory``` option which will return a list of devices with additional device info.
