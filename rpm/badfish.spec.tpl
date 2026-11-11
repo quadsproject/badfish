@@ -30,7 +30,7 @@ Provides:       badfish = %{version}-%{release}
 # The emulator subcommand (badfish.emulator.run_daemon) shells out to openssl
 # to generate its self-signed TLS cert on first run.
 Requires:       openssl
-# --proxy HTTP/SOCKS support (>= 0.10.0 provides the rdns/from_url API used)
+# --proxy SOCKS support (>= 0.10.0 provides the rdns/from_url API used)
 Requires:       python3dist(aiohttp-socks) >= 0.10.0
 
 %description
