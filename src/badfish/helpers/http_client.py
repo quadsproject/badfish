@@ -17,7 +17,13 @@ except ImportError:
 
 from async_lru import alru_cache
 from badfish.helpers.exceptions import BadfishException
-from badfish.helpers.proxies import ProxyError, build_connector, parse_proxy
+from badfish.helpers.proxies import (
+    ProxyError,
+    build_connector,
+    parse_proxy,
+    proxy_auth_header,
+    request_proxy_url,
+)
 
 
 def load_json(raw: str, context: str = "response") -> Any:
@@ -56,6 +62,9 @@ class HTTPClient:
                 parse_proxy(proxy)
             except ProxyError as ex:
                 raise BadfishException(str(ex)) from None
+        self._request_proxy = request_proxy_url(proxy)
+        auth_header = proxy_auth_header(proxy)
+        self._proxy_headers = {"Proxy-Authorization": auth_header} if auth_header else None
         self.host_uri = f"https://{host}"
         self.redfish_uri = "/redfish/v1"
         self.root_uri = f"{self.host_uri}{self.redfish_uri}"
@@ -142,6 +151,8 @@ class HTTPClient:
                                 headers={"X-Auth-Token": self.token} if self.token else {},
                                 ssl=False if self.insecure else True,
                                 timeout=self.timeout,
+                                proxy=self._request_proxy,
+                                proxy_headers=self._proxy_headers,
                             ) as _response:
                                 await _response.read()
                         else:
@@ -150,6 +161,8 @@ class HTTPClient:
                                 auth=aiohttp.BasicAuth(self.username, self.password),
                                 ssl=False if self.insecure else True,
                                 timeout=self.timeout,
+                                proxy=self._request_proxy,
+                                proxy_headers=self._proxy_headers,
                             ) as _response:
                                 await _response.read()
                 return _response
@@ -200,6 +213,8 @@ class HTTPClient:
                         headers=headers,
                         ssl=False if self.insecure else True,
                         timeout=self.timeout,
+                        proxy=self._request_proxy,
+                        proxy_headers=self._proxy_headers,
                     ) as _response:
                         if _response.status != 204:
                             await _response.read()
@@ -207,7 +222,13 @@ class HTTPClient:
                             return _response
         except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
             self._handle_ssl_error(ex)
-        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+        except (
+            ProxyConnectionError,
+            SocksProxyError,
+            ProxyTimeoutError,
+            aiohttp.ClientProxyConnectionError,
+            aiohttp.ClientHttpProxyError,
+        ) as ex:
             raise BadfishException(str(ex)) from None
         except BadfishException:
             raise
@@ -227,6 +248,8 @@ class HTTPClient:
                         headers=headers,
                         ssl=False if self.insecure else True,
                         timeout=self.timeout,
+                        proxy=self._request_proxy,
+                        proxy_headers=self._proxy_headers,
                     ) as _response:
                         raw_data = await _response.read()
                         self.logger.debug(raw_data)
@@ -235,7 +258,13 @@ class HTTPClient:
             if _continue:
                 return None
             self._handle_ssl_error(ex)
-        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+        except (
+            ProxyConnectionError,
+            SocksProxyError,
+            ProxyTimeoutError,
+            aiohttp.ClientProxyConnectionError,
+            aiohttp.ClientHttpProxyError,
+        ) as ex:
             if _continue:
                 return None
             raise BadfishException(str(ex)) from None
@@ -259,13 +288,21 @@ class HTTPClient:
                         headers=headers,
                         ssl=False if self.insecure else True,
                         timeout=self.timeout,
+                        proxy=self._request_proxy,
+                        proxy_headers=self._proxy_headers,
                     ) as _response:
                         raw_data = await _response.read()
                         self.logger.debug(raw_data)
                         return _response
         except (ssl.SSLError, aiohttp.ClientConnectorCertificateError, aiohttp.ClientSSLError) as ex:
             self._handle_ssl_error(ex)
-        except (ProxyConnectionError, SocksProxyError, ProxyTimeoutError) as ex:
+        except (
+            ProxyConnectionError,
+            SocksProxyError,
+            ProxyTimeoutError,
+            aiohttp.ClientProxyConnectionError,
+            aiohttp.ClientHttpProxyError,
+        ) as ex:
             raise BadfishException(str(ex)) from None
         except BadfishException:
             raise
