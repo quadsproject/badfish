@@ -25,13 +25,15 @@ BuildRequires:  python3dist(pytest)
 BuildRequires:  python3dist(pytest-asyncio)
 BuildRequires:  python3dist(pyyaml)
 BuildRequires:  python3dist(aiohttp)
-BuildRequires:  python3dist(aiohttp-socks) >= 0.11.0
+BuildRequires:  python3dist(aiohttp-socks) >= 0.11
 Provides:       badfish = %{version}-%{release}
 # The emulator subcommand (badfish.emulator.run_daemon) shells out to openssl
 # to generate its self-signed TLS cert on first run.
 Requires:       openssl
-# --proxy SOCKS support (>= 0.11.0 wraps python_socks errors for aiohttp >= 3.12)
-Requires:       python3dist(aiohttp-socks) >= 0.11.0
+# --proxy SOCKS support (>= 0.11 wraps python_socks errors for aiohttp >= 3.12;
+# Fedora provides python3dist(aiohttp-socks) = 0.11 for the 0.11.0 release, so
+# the spec floor is 0.11, not 0.11.0)
+Requires:       python3dist(aiohttp-socks) >= 0.11
 
 %description
 %{desc}
