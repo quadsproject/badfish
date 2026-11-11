@@ -501,7 +501,7 @@ badfish -H mgmt-your-server.example.com --insecure --power-state
 
 ### Using Badfish with a Proxy
 
-The management network is often only reachable through a jump host. Badfish can route every Redfish request through a proxy: pass an explicit `--proxy` URL, or use the `HTTPS_PROXY`/`HTTP_PROXY` environment variables with `--trust-env-proxy`. In both cases the proxy sees the BMC hostnames you connect to, while Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
+The management network is often only reachable through a jump host. Badfish can route every Redfish request through a proxy: pass an explicit `--proxy` URL, or use the `HTTPS_PROXY`/`HTTP_PROXY` environment variables with `--trust-env-proxy`. Credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). HTTP and `socks5h`/`socks4a` proxies see the BMC hostnames you connect to; `socks5`/`socks4` resolve them locally, so the proxy sees the BMC IP address instead. Redfish credentials remain inside TLS to the BMC, so only use a proxy you trust.
 
 #### SOCKS proxy
 
@@ -512,7 +512,7 @@ ssh -D 1080 user@jump-host.example.com
 badfish -H mgmt-your-server.example.com --proxy socks5h://127.0.0.1:1080 --power-state
 ```
 
-Supported schemes are `socks4`, `socks4a`, `socks5` and `socks5h`. `socks5h` and `socks4a` resolve the BMC hostname on the proxy side; `socks5` and `socks4` resolve it locally. Credentials can be embedded as `user:pass@` (percent-encode any `%XX` sequences in the password). SOCKS support requires the optional `aiohttp-socks` package (`pip install badfish[proxy]`).
+Supported schemes are `socks4`, `socks4a`, `socks5` and `socks5h`. `socks5h` and `socks4a` resolve the BMC hostname on the proxy side; `socks5` and `socks4` resolve it locally. SOCKS support requires the optional `aiohttp-socks` package (`pip install badfish[proxy]`).
 
 #### HTTP proxy
 
@@ -521,6 +521,8 @@ An HTTP proxy works the same way with `--proxy`; the request is tunneled through
 ```bash
 badfish -H mgmt-your-server.example.com --proxy http://proxy.example.com:3128 --power-state
 ```
+
+aiohttp handles HTTP proxies natively, so `--proxy http://...` needs no extra package; `aiohttp-socks` is only required for SOCKS.
 
 #### HTTPS_PROXY environment variable
 

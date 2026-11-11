@@ -16,7 +16,7 @@ depends=(
     'python-rich'
 )
 optdepends=(
-    'python-aiohttp-socks: for --proxy HTTP/SOCKS proxy support'
+    'python-aiohttp-socks: for --proxy SOCKS proxy support'
 )
 makedepends=(
     'python-build'

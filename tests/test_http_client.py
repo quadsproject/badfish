@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import aiohttp
 import pytest
+from aiohttp.client_reqrep import ConnectionKey
 
 from badfish.helpers.http_client import HTTPClient, load_json
 from badfish.helpers.exceptions import BadfishException
@@ -739,3 +740,52 @@ async def test_session_explicit_proxy_wins_over_env():
     session = client._session()
     assert session._trust_env is False
     await session.close()
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.get")
+async def test_get_raw_passes_http_proxy_kwarg(mock_get):
+    logger = DummyLogger()
+    client = HTTPClient(
+        "host",
+        "u",
+        "p",
+        logger,
+        insecure=False,
+        proxy="http://user:pass@proxy.example.com:3128",
+    )
+    set_mock_response(mock_get, 200, "{}")
+    resp = await client.get_raw("https://x")
+    assert resp.status == 200
+    found = False
+    for args, kwargs in mock_get.call_args_list:
+        if kwargs.get("proxy") == "http://proxy.example.com:3128" and kwargs.get("proxy_headers") == {
+            "Proxy-Authorization": "Basic dXNlcjpwYXNz"
+        }:
+            found = True
+            break
+    assert found
+
+
+@pytest.mark.asyncio
+@requires_socks
+@patch("aiohttp.ClientSession.get")
+async def test_get_raw_socks_proxy_uses_no_native_kwarg(mock_get):
+    logger = DummyLogger()
+    client = HTTPClient("host", "u", "p", logger, insecure=False, proxy="socks5h://127.0.0.1:1080")
+    set_mock_response(mock_get, 200, "{}")
+    resp = await client.get_raw("https://x")
+    assert resp.status == 200
+    for args, kwargs in mock_get.call_args_list:
+        assert kwargs.get("proxy") is None
+        assert kwargs.get("proxy_headers") is None
+
+
+@pytest.mark.asyncio
+@patch("aiohttp.ClientSession.post")
+async def test_post_request_preserves_http_proxy_connection_error(mock_post):
+    connection_key = ConnectionKey("127.0.0.1", 3128, True, True, None, None, None, True)
+    mock_post.side_effect = aiohttp.ClientProxyConnectionError(connection_key, OSError(111, "Connection refused"))
+    client = HTTPClient("host", "u", "p", DummyLogger(), proxy="http://127.0.0.1:3128")
+    with pytest.raises(BadfishException, match="Cannot connect"):
+        await client.post_request("https://x", {}, {})
