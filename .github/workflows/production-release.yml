@@ -24,7 +24,6 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write # Needed to create releases/tags
-            id-token: write # Needed for PyPI trusted publishing
         outputs:
             released: ${{ steps.semantic.outputs.released }}
             tag: ${{ steps.semantic.outputs.tag }}
