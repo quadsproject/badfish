@@ -304,6 +304,11 @@ PYTHONPATH="./src" python3 src/badfish/main.py -h
 ```
 
 ### Via RPM System Package
+```bash
+dnf copr enable quadsdev/badfish  -y
+dnf install badfish -y
+```
+
 If you choose to install Badfish via RPM package then it'll be located in `/usr/bin/badfish` and you don't need to do much else beyond know the correct command syntax for your required operations.
 
 > [!NOTE]
