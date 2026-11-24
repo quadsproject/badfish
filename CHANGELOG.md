@@ -1,6 +1,9 @@
 # CHANGELOG
 
 
+## v1.10.0 (2026-11-24)
+
+
 ## v1.9.0 (2026-11-23)
 
 ### Bug Fixes
@@ -101,12 +104,29 @@ Fixes #602
 
 ### Bug Fixes
 
+- Allow proxy tests to skip when aiohttp-socks is absent
+  ([`8391f7e`](https://github.com/quadsproject/badfish/commit/8391f7ec3fba9f4d518ae5f877ff22d9501a15a8))
+
 - Handle PowerControl entry without PowerConsumedWatts
   ([`a721c01`](https://github.com/quadsproject/badfish/commit/a721c01f74c4fc157354f2ed34187d052e97cca8))
 
 Some BMCs (notably NVIDIA) expose a PowerControl array whose member lacks the DMTF
   PowerConsumedWatts field, so the lookup raises KeyError instead of IndexError. Catch both and
   degrade to the same not-exposed message rather than an unhandled traceback (issue #395).
+
+- Install python3-aiohttp-socks in the rpmlint CI container
+  ([`1df80e5`](https://github.com/quadsproject/badfish/commit/1df80e519c89b7982c184c6d3f58ea1bd2ba4a2a))
+
+rpmbuild -ba resolves BuildRequires against the container's installed packages, so the declared
+  python3dist(aiohttp-socks) BuildRequires needs the package in the dnf install list.
+
+- Make aiohttp-socks optional and fix CI checks
+  ([`657d94c`](https://github.com/quadsproject/badfish/commit/657d94c64caaf0518f32ab68a283b00befc818b3))
+
+python3-aiohttp-socks is not packaged for Fedora 45 and the AUR CI cannot resolve it, so proxy
+  support is now an optional dependency with a clear runtime error when missing. The RPM spec and
+  setup.cfg metadata no longer require it, the AUR package lists it as an optdepend, and tests skip
+  gracefully without it.
 
 - Read power from PowerSubsystem when PowerControl lacks PowerConsumedWatts
   ([`f325e7c`](https://github.com/quadsproject/badfish/commit/f325e7cf3c61d3a18883b078baa4f01d23c23847))
@@ -120,6 +140,31 @@ fixes: https://github.com/quadsproject/badfish/issues/395
 
 fixes: https://github.com/quadsproject/badfish/issues/601
 
+- Require aiohttp-socks >= 0.10.0 as an RPM dependency
+  ([`2bce341`](https://github.com/quadsproject/badfish/commit/2bce3415ec377c4205a4a7fb0187072439b2fea0))
+
+python3-aiohttp-socks is now in Fedora 45, so declare it in rpm/badfish.spec.tpl as BuildRequires
+  and Requires >= 0.10.0; align the pip pins. 0.10.1 passes the full proxy test suite, so the floor
+  is real.
+
+- Route http proxies through native aiohttp support
+  ([`9b7b7f5`](https://github.com/quadsproject/badfish/commit/9b7b7f55e8dca5ce339a858ee787dbe1242a1626))
+
+Address review on #603: plain http:// proxies now use aiohttp's native request-level proxy support,
+  so aiohttp-socks is only required for SOCKS (SOCKS still uses the connector path). Proxy
+  credentials travel in the Proxy-Authorization header and are stripped from the URL, so proxy
+  credentials can never leak into aiohttp error messages; redact_proxy also covers userinfo that
+  appears before the scheme separator. aiohttp proxy connection errors surface their real message on
+  all verbs, and the aiohttp-socks floor is >=0.10.0 everywhere, matching the PR description.
+
+- Use Fedora-compatible aiohttp-socks floor in rpm spec
+  ([`6b54195`](https://github.com/quadsproject/badfish/commit/6b54195cf81da0d45856a15ea8bf0f0a82f80d5c))
+
+Fedora's python3dist() provides normalize the 0.11.0 release to python3dist(aiohttp-socks) = 0.11,
+  and rpm compares 0.11 < 0.11.0, so a spec floor of >= 0.11.0 could never be satisfied on F45 and
+  rpmlint CI failed the build dependencies. Require >= 0.11, the same effective floor (pip metadata
+  keeps >=0.11.0).
+
 ### Chores
 
 - Bump lint CI
@@ -129,6 +174,69 @@ use checkout v4 and setup-python v5, track Python 3.13 minor instead of the remo
   release so the Lint job stops failing
 
 Fixes #604
+
+- Bump lint CI
+  ([`e2e5833`](https://github.com/quadsproject/badfish/commit/e2e58332406faf0852c4fba1b521395316108e49))
+
+use checkout v4 and setup-python v5, track Python 3.13 minor instead of the removed 3.13.15 patch
+  release so the Lint job stops failing
+
+Fixes #604
+
+- Declare aiohttp-socks as optional proxy extra
+  ([`243eb08`](https://github.com/quadsproject/badfish/commit/243eb08327effe49513bf8f7a0ab0cae7676b9d2))
+
+- Fix ConnectionKey arity in proxy error test
+  ([`163230d`](https://github.com/quadsproject/badfish/commit/163230dbf4da6131472cf645c812f16eb0bf7537))
+
+ConnectionKey has 7 fields through aiohttp 3.13; the 8th field server_hostname (defaulted) was added
+  in aiohttp 3.14. Fedora 43/44 ship aiohttp 3.13.5, so the COPR %check failed with TypeError.
+
+fixes: https://github.com/quadsproject/badfish/issues/610
+
+- Fix RPM install docs
+  ([`b79ce85`](https://github.com/quadsproject/badfish/commit/b79ce85ef008ec408592b7480c0798f10319a585))
+
+Add the dnf copr enable and dnf install commands to the Via RPM System Package section.
+
+- Raise aiohttp-socks floor to 0.11.0
+  ([`32bb285`](https://github.com/quadsproject/badfish/commit/32bb28548ad22acbd9446ff418397860c33a4630))
+
+0.11.0 wraps python_socks proxy errors (aiohttp-socks #52), so
+  ProxyConnectionError/ProxyTimeoutError surface correctly when aiohttp >= 3.12 would otherwise
+  convert them to ClientOSError; the from_url/rdns API used is unchanged. Bump requirements.txt, the
+  setup.cfg proxy extra and the RPM spec so everything ships the same floor.
+
+- Remove unused id-token permission
+  ([`1789392`](https://github.com/quadsproject/badfish/commit/17893929ded5f304ce43897f6d49de68259792e1))
+
+The pypa publish step authenticates with the PyPI API token, not OIDC, so id-token: write is never
+  exercised. Removing the dead permission removes the only OIDC trust surface.
+
+### Documentation
+
+- Document --trust-env-proxy and proxy usage in its own section
+  ([`40304d1`](https://github.com/quadsproject/badfish/commit/40304d1d3fa5d9c18a49cea217025690baa9d5d4))
+
+Break out SOCKS, HTTP and HTTPS_PROXY environment variable usage under a dedicated TOC entry,
+  including NO_PROXY behavior and --proxy precedence.
+
+### Features
+
+- Add --trust-env-proxy flag to honor HTTPS_PROXY/HTTP_PROXY
+  ([`797c7fe`](https://github.com/quadsproject/badfish/commit/797c7fe45b211191675eaf66ee8a961cd1940ceb))
+
+Opt-in trust_env so the environment proxy only applies when --proxy is not set; aiohttp's
+  request-level env proxy would otherwise silently override an explicit connector.
+
+- Route Redfish requests through HTTP/SOCKS proxy via --proxy
+  ([`e98eb99`](https://github.com/quadsproject/badfish/commit/e98eb998f9baf3e31680df5ae83520edad3d011c))
+
+Add a --proxy CLI option (e.g. socks5h://127.0.0.1:1080) that routes all Redfish traffic through an
+  HTTP or SOCKS proxy, following the validated proxy URL pattern from quads-client and mozzo. SOCKS
+  uses aiohttp-socks; socks5h/socks4a resolve DNS remotely, socks5/socks4 locally.
+
+Fixes #602
 
 ### Testing
 
