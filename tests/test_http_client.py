@@ -784,7 +784,7 @@ async def test_get_raw_socks_proxy_uses_no_native_kwarg(mock_get):
 @pytest.mark.asyncio
 @patch("aiohttp.ClientSession.post")
 async def test_post_request_preserves_http_proxy_connection_error(mock_post):
-    connection_key = ConnectionKey("127.0.0.1", 3128, True, True, None, None, None, True)
+    connection_key = ConnectionKey("127.0.0.1", 3128, True, True, None, None, None)
     mock_post.side_effect = aiohttp.ClientProxyConnectionError(connection_key, OSError(111, "Connection refused"))
     client = HTTPClient("host", "u", "p", DummyLogger(), proxy="http://127.0.0.1:3128")
     with pytest.raises(BadfishException, match="Cannot connect"):
