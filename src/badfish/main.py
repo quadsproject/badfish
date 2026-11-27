@@ -1786,8 +1786,33 @@ class Badfish:
 
         raise BadfishException("Not able to access virtual media resource.")
 
-    async def get_virtual_media_device(self, vm_config):
-        """Resolve the virtual optical media device from a media collection."""
+    async def get_virtual_media_device(self, vm_config, prefer_inserted=False):
+        """Resolve the virtual optical media device from a media collection.
+
+        iDRAC10 exposes two optical-capable instances ("1" and "2"), so member
+        order is not enough: with prefer_inserted the member actually holding
+        media wins, falling back to the first optical member.
+        """
+        if prefer_inserted:
+            fallback = None
+            for member in vm_config:
+                _response = await self.get_request("%s%s" % (self.host_uri, member))
+                try:
+                    raw = await _response.text("utf-8", "ignore")
+                    data = json.loads(raw.strip())
+                except ValueError:
+                    self.logger.warning("Could not parse virtual media member %s; skipping." % member)
+                    continue
+                if not self.is_optical_media(data.get("Id"), data.get("MediaTypes")):
+                    continue
+                if str(data.get("Inserted")).lower() == "true":
+                    return member
+                if fallback is None:
+                    fallback = member
+            if fallback is None:
+                raise BadfishException("No virtual optical media device found.")
+            return fallback
+
         for member in vm_config:
             if self.is_optical_media(member.split("/")[-1]):
                 return member
@@ -1923,7 +1948,7 @@ class Badfish:
             _uri = "%s%s" % (self.host_uri, vm_config["config"])
             _response = await self.patch_request(_uri, payload=_payload, headers=_headers)
         else:
-            vcd = await self.get_virtual_media_device(vm_config)
+            vcd = await self.get_virtual_media_device(vm_config, prefer_inserted=True)
             _uri = "%s%s/Actions/VirtualMedia.EjectMedia" % (self.host_uri, vcd)
             _response = await self.post_request(_uri, payload={}, headers=_headers)
             status = _response.status

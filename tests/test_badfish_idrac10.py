@@ -204,6 +204,64 @@ class TestVirtualMediaActions:
         assert await badfish_instance.mount_virtual_media("http://example.com/boot.iso") is True
         assert badfish_instance.post_request.call_args[0][0] == url("%s/Actions/VirtualMedia.InsertMedia" % MEMBER_ONE)
 
+    @pytest.mark.asyncio
+    async def test_unmount_prefers_inserted_member(self, badfish_instance):
+        """iDRAC10 serves two optical instances; eject the one holding media."""
+        badfish_instance.virtual_media_resource = SYSTEM_VM
+        responses = {
+            url(SYSTEM_VM): make_response(payload=media_collection(MEMBER_TWO, MEMBER_ONE)),
+            url(MEMBER_TWO): make_response(payload={"Id": "2", "Inserted": False, "MediaTypes": OPTICAL_MEDIA_TYPES}),
+            url(MEMBER_ONE): make_response(
+                payload={"Id": "1", "Inserted": True, "ImageName": "boot.iso", "MediaTypes": OPTICAL_MEDIA_TYPES}
+            ),
+        }
+        badfish_instance.get_request = AsyncMock(side_effect=router(responses))
+        badfish_instance.post_request = AsyncMock(return_value=make_response(status=204))
+
+        assert await badfish_instance.unmount_virtual_media() is True
+        assert badfish_instance.post_request.call_args[0][0] == url("%s/Actions/VirtualMedia.EjectMedia" % MEMBER_ONE)
+
+    @pytest.mark.asyncio
+    async def test_unmount_falls_back_to_first_optical_when_none_inserted(self, badfish_instance):
+        badfish_instance.virtual_media_resource = SYSTEM_VM
+        responses = {
+            url(SYSTEM_VM): make_response(payload=media_collection(MEMBER_TWO, MEMBER_ONE)),
+            url(MEMBER_TWO): make_response(payload={"Id": "2", "Inserted": False, "MediaTypes": OPTICAL_MEDIA_TYPES}),
+            url(MEMBER_ONE): make_response(payload={"Id": "1", "Inserted": False, "MediaTypes": OPTICAL_MEDIA_TYPES}),
+        }
+        badfish_instance.get_request = AsyncMock(side_effect=router(responses))
+        badfish_instance.post_request = AsyncMock(return_value=make_response(status=500))
+
+        assert await badfish_instance.unmount_virtual_media() is False
+        assert badfish_instance.post_request.call_args[0][0] == url("%s/Actions/VirtualMedia.EjectMedia" % MEMBER_TWO)
+
+    @pytest.mark.asyncio
+    async def test_get_device_prefers_inserted_member(self, badfish_instance):
+        responses = {
+            url(MEMBER_TWO): make_response(payload={"Id": "2", "Inserted": False, "MediaTypes": OPTICAL_MEDIA_TYPES}),
+            url(MEMBER_ONE): make_response(payload={"Id": "1", "Inserted": True, "MediaTypes": OPTICAL_MEDIA_TYPES}),
+        }
+        badfish_instance.get_request = AsyncMock(side_effect=router(responses))
+
+        assert (
+            await badfish_instance.get_virtual_media_device([MEMBER_TWO, MEMBER_ONE], prefer_inserted=True)
+            == MEMBER_ONE
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_device_skips_unparseable_member(self, badfish_instance):
+        member_two = make_response(payload={"Id": "2", "Inserted": False, "MediaTypes": OPTICAL_MEDIA_TYPES})
+        member_one = make_response(payload={"Id": "1", "Inserted": True, "MediaTypes": OPTICAL_MEDIA_TYPES})
+        member_one.text = AsyncMock(return_value="{not json")
+        responses = {url(MEMBER_TWO): member_two, url(MEMBER_ONE): member_one}
+        badfish_instance.get_request = AsyncMock(side_effect=router(responses))
+
+        assert (
+            await badfish_instance.get_virtual_media_device([MEMBER_TWO, MEMBER_ONE], prefer_inserted=True)
+            == MEMBER_TWO
+        )
+        badfish_instance.logger.warning.assert_called_once()
+
 
 class TestOsDeploymentResource:
     @pytest.mark.asyncio
