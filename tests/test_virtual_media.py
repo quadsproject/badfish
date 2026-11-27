@@ -251,7 +251,7 @@ class TestUnmountVirtualMedia(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_unmount_good_dell(self, mock_get, mock_post, mock_delete):
-        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL]
+        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL, VMEDIA_MEMBER_RM_DISK_RESP, VMEDIA_MEMBER_CD_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 204], "OK", True)
@@ -264,7 +264,7 @@ class TestUnmountVirtualMedia(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_unmount_not_allowed_dell(self, mock_get, mock_post, mock_delete):
-        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL]
+        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL, VMEDIA_MEMBER_RM_DISK_RESP, VMEDIA_MEMBER_CD_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 405], "OK", True)
@@ -277,7 +277,7 @@ class TestUnmountVirtualMedia(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_unmount_empty_dell(self, mock_get, mock_post, mock_delete):
-        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL]
+        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL, VMEDIA_MEMBER_RM_DISK_RESP, VMEDIA_MEMBER_CD_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 500], "OK", True)
@@ -290,7 +290,7 @@ class TestUnmountVirtualMedia(TestBase):
     @patch("aiohttp.ClientSession.post")
     @patch("aiohttp.ClientSession.get")
     def test_mount_something_wrong_dell(self, mock_get, mock_post, mock_delete):
-        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL]
+        responses_get = [VMEDIA_GET_VM_CONFIG_RESP_DELL, VMEDIA_MEMBER_RM_DISK_RESP, VMEDIA_MEMBER_CD_RESP]
         responses = INIT_RESP + responses_get
         self.set_mock_response(mock_get, 200, responses)
         self.set_mock_response(mock_post, [200, 400], "OK", True)
